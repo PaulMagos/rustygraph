@@ -37,7 +37,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .add_builtin(BuiltinFeature::IsLocalMax)
         .add_builtin(BuiltinFeature::IsLocalMin)
         .add_function("squared", |series, idx| {
-            series[idx].map(|v| v * v)
+            series[idx].map(|v: f64| v * v)
         })
         .add_function("log_abs", |series, idx| {
             series[idx].map(|v| v.abs().ln())
