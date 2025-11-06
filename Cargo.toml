@@ -29,3 +29,7 @@ path = "examples/basic_usage.rs"
 name = "with_features"
 path = "examples/with_features.rs"
 
+[[example]]
+name = "weighted_graphs"
+path = "examples/weighted_graphs.rs"
+

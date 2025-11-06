@@ -126,7 +126,8 @@
 
 **Validation**:
 ```bash
-cargo test algorithms::natural::tests
+cargo test natural_visibility_tests
+cargo test horizontal_visibility_tests
 cargo bench natural_visibility  # After benchmarks are added
 ```
 

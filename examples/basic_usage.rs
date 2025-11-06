@@ -48,7 +48,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Export to adjacency matrix
     println!("\nAdjacency matrix (natural):");
     let matrix = natural_graph.to_adjacency_matrix();
-    for (_i, row) in matrix.iter().enumerate() {
+    for row in &matrix {
         print!("  [");
         for (j, &val) in row.iter().enumerate() {
             print!("{}", if val { 1 } else { 0 });

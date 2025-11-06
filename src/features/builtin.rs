@@ -7,12 +7,6 @@
 // use crate::features::Feature;
 // use crate::features::missing_data::MissingDataHandler;
 
-/// Implementation details for built-in features.
-///
-/// This module is typically not used directly - instead, use the
-/// [`BuiltinFeature`](crate::features::BuiltinFeature) enum with
-/// [`FeatureSet::add_builtin`](crate::features::FeatureSet::add_builtin).
-
 /// Forward difference feature: y[i+1] - y[i]
 pub struct DeltaForwardFeature;
 
