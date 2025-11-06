@@ -5,6 +5,14 @@ A high-performance Rust library for visibility graph computation from time serie
 [![Documentation](https://img.shields.io/badge/docs-rustdoc-blue)](https://docs.rs/rustygraph)
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
+## 📚 Documentation Index
+
+- **[README.md](README.md)** - You are here! Main overview and quick start
+- **[IMPLEMENTATION_SCHEDULE.md](IMPLEMENTATION_SCHEDULE.md)** - ⭐ **START HERE** for step-by-step implementation guide
+- **[VISUAL_GUIDE.md](VISUAL_GUIDE.md)** - Visual diagrams and quick reference
+- **API Docs** - Run `cargo doc --open` for full rustdoc documentation
+
+
 ## Features
 
 - **Natural Visibility Graphs**: O(n) implementation using monotonic stack optimization

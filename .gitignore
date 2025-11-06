@@ -1,1 +1,35 @@
+# Rust build artifacts
 /target
+**/*.rs.bk
+*.pdb
+
+# Cargo lock file (optional for libraries)
+# Cargo.lock
+
+# IDE files
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Documentation build
+/target/doc
+
+# Benchmark results
+/target/criterion
+
+# Test coverage
+/target/coverage
+*.profraw
+*.profdata
+
+# Backup files
+*.bak
+*.orig
+
+# Local development
+PROGRESS.md
+notes.md
+scratch.rs

@@ -3,20 +3,12 @@
   <component name="CopilotDiffPersistence">
     <option name="pendingDiffs">
       <map>
-        <entry key="$PROJECT_DIR$/Cargo.toml">
+        <entry key="$PROJECT_DIR$/.gitignore">
           <value>
             <PendingDiffInfo>
-              <option name="filePath" value="$PROJECT_DIR$/Cargo.toml" />
-              <option name="originalContent" value="[package]&#10;name = &quot;rustygraph&quot;&#10;version = &quot;0.1.0&quot;&#10;edition = &quot;2024&quot;&#10;&#10;[dependencies]&#10;dataloader = &quot;0.18.0&quot;&#10;futures = &quot;0.3&quot;&#10;" />
-              <option name="updatedContent" value="[package]&#10;name = &quot;rustygraph&quot;&#10;version = &quot;0.1.0&quot;&#10;edition = &quot;2021&quot;&#10;authors = [&quot;Paul Magos &lt;paul@example.com&gt;&quot;]&#10;description = &quot;A high-performance library for visibility graph computation from time series data&quot;&#10;documentation = &quot;https://docs.rs/rustygraph&quot;&#10;repository = &quot;https://github.com/paulmagos/rustygraph&quot;&#10;license = &quot;MIT&quot;&#10;keywords = [&quot;time-series&quot;, &quot;graph&quot;, &quot;visibility&quot;, &quot;network&quot;, &quot;complex-networks&quot;]&#10;categories = [&quot;algorithms&quot;, &quot;science&quot;, &quot;data-structures&quot;]&#10;readme = &quot;README.md&quot;&#10;&#10;[lib]&#10;name = &quot;rustygraph&quot;&#10;path = &quot;src/lib.rs&quot;&#10;&#10;[dependencies]&#10;dataloader = &quot;0.18.0&quot;&#10;futures = &quot;0.3&quot;&#10;&#10;[dev-dependencies]&#10;&#10;[[example]]&#10;name = &quot;basic_usage&quot;&#10;path = &quot;examples/basic_usage.rs&quot;&#10;&#10;[[example]]&#10;name = &quot;with_features&quot;&#10;path = &quot;examples/with_features.rs&quot;&#10;" />
-            </PendingDiffInfo>
-          </value>
-        </entry>
-        <entry key="$PROJECT_DIR$/src/features/builtin.rs">
-          <value>
-            <PendingDiffInfo>
-              <option name="filePath" value="$PROJECT_DIR$/src/features/builtin.rs" />
-              <option name="updatedContent" value="//! Built-in feature implementations.&#10;//!&#10;//! This module contains the implementations of all built-in features&#10;//! provided by the library.&#10;&#10;use crate::features::{Feature, BuiltinFeature};&#10;use crate::features::missing_data::MissingDataHandler;&#10;&#10;// Placeholder implementations for built-in features&#10;// These will be implemented based on the BuiltinFeature enum&#10;&#10;/// Implementation details for built-in features.&#10;///&#10;/// This module is typically not used directly - instead, use the&#10;/// [`BuiltinFeature`] enum with [`FeatureSet::add_builtin`].&#10;pub struct DeltaForwardFeature;&#10;pub struct DeltaBackwardFeature;&#10;pub struct DeltaSymmetricFeature;&#10;pub struct LocalSlopeFeature;&#10;pub struct AccelerationFeature;&#10;pub struct LocalMeanFeature;&#10;pub struct LocalVarianceFeature;&#10;pub struct IsLocalMaxFeature;&#10;pub struct IsLocalMinFeature;&#10;pub struct ZScoreFeature;&#10;&#10;// Note: Full implementations would go here&#10;// For documentation purposes, we're showing the structure&#10;" />
+              <option name="filePath" value="$PROJECT_DIR$/.gitignore" />
+              <option name="originalContent" value="/target&#10;" />
+              <option name="updatedContent" value="# Rust build artifacts&#10;/target&#10;**/*.rs.bk&#10;*.pdb&#10;&#10;# Cargo lock file (optional for libraries)&#10;# Cargo.lock&#10;&#10;# IDE files&#10;.idea/&#10;.vscode/&#10;*.swp&#10;*.swo&#10;*~&#10;.DS_Store&#10;&#10;# Documentation build&#10;/target/doc&#10;&#10;# Benchmark results&#10;/target/criterion&#10;&#10;# Test coverage&#10;/target/coverage&#10;*.profraw&#10;*.profdata&#10;&#10;# Backup files&#10;*.bak&#10;*.orig&#10;&#10;# Local development&#10;PROGRESS.md&#10;notes.md&#10;scratch.rs&#10;" />
             </PendingDiffInfo>
           </value>
         </entry>
