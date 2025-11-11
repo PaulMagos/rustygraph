@@ -60,12 +60,13 @@ fn test_pipeline_with_missing_data() {
 
 #[test]
 fn test_weighted_graph_pipeline() {
-    use rustygraph::algorithms::natural_visibility_weighted;
+    use rustygraph::algorithms::natural_visibility;
+    use rustygraph::algorithms::visibility_weighted;
 
     let series: Vec<f64> = vec![1.0, 3.0, 2.0, 4.0];
 
     // Create weighted edges
-    let edges = natural_visibility_weighted(&series, |i, j, _, _| {
+    let edges = visibility_weighted(&series, natural_visibility, |i, j, _, _| {
         (j - i) as f64
     });
 

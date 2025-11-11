@@ -226,8 +226,8 @@ This library currently provides the **API design and documentation** for a compr
 ### 🚧 Pending Implementations
 
 #### Core Algorithms
-- [ ] **Natural visibility algorithm** - O(n) monotonic stack implementation
-- [ ] **Horizontal visibility algorithm** - Linear scan approach
+- [x] **Natural visibility algorithm** - O(n) monotonic stack implementation
+- [x] **Horizontal visibility algorithm** - Linear scan approach
 - [ ] Edge deduplication and graph construction
 
 #### Feature Computation
@@ -265,7 +265,7 @@ This library currently provides the **API design and documentation** for a compr
 - [ ] **Memory pooling** for large graphs
 
 #### Advanced Features
-- [ ] **Weighted visibility graphs** with edge weights
+- [x] **Weighted visibility graphs** with edge weights
 - [ ] **Directed vs undirected** graph options
 - [ ] **Frequency domain features** (FFT coefficients)
 - [ ] **Wavelet-based features** for multi-scale analysis
@@ -311,7 +311,6 @@ This library currently provides the **API design and documentation** for a compr
 ### 🎓 Use Cases (Once Implemented)
 
 - **Climate data**: Temperature and precipitation patterns
-- **Energy Load Disaggregation**: Consumption pattern analysis
 - **Energy Load and Solar Forecasting**: Predictive modeling
 - **Financial time series analysis**: Market volatility patterns
 - **Physiological signals**: ECG, EEG analysis

@@ -65,9 +65,9 @@ pub struct VisibilityGraph<T> {
     /// Number of nodes (data points)
     pub node_count: usize,
     /// Graph edges as (source, target) pairs
-    edges: Vec<(usize, usize)>,
+    edges: HashMap<(usize, usize), f64>,
     /// Adjacency list representation
-    adjacency: Vec<Vec<usize>>,
+    adjacency: Vec<Vec<f64>>,
     /// Computed features for each node
     pub node_features: Vec<HashMap<String, T>>,
 }
@@ -122,7 +122,7 @@ impl<T> VisibilityGraph<T> {
     ///     println!("{} -> {}", src, dst);
     /// }
     /// ```
-    pub fn edges(&self) -> &[(usize, usize)] {
+    pub fn edges(&self) -> &HashMap<(usize, usize), f64> {
         &self.edges
     }
 
@@ -150,7 +150,7 @@ impl<T> VisibilityGraph<T> {
     ///     println!("Node 0 is connected to: {:?}", neighbors);
     /// }
     /// ```
-    pub fn neighbors(&self, node: usize) -> Option<&[usize]> {
+    pub fn neighbors(&self, node: usize) -> Option<&[f64]> {
         self.adjacency.get(node).map(|v| v.as_slice())
     }
 
@@ -258,10 +258,10 @@ impl<T> VisibilityGraph<T> {
     ///     println!("{:?}", row);
     /// }
     /// ```
-    pub fn to_adjacency_matrix(&self) -> Vec<Vec<bool>> {
-        let mut matrix = vec![vec![false; self.node_count]; self.node_count];
-        for &(src, dst) in &self.edges {
-            matrix[src][dst] = true;
+    pub fn to_adjacency_matrix(&self) -> Vec<Vec<f64>> {
+        let mut matrix = vec![vec![0.0; self.node_count]; self.node_count];
+        for &(src, dst) in self.edges.keys() {
+            matrix[src][dst] = self.edges[&(src, dst)];
         }
         matrix
     }
@@ -291,7 +291,8 @@ pub struct VisibilityGraphBuilder<'a, T> {
     feature_set: Option<FeatureSet<T>>,
 }
 
-impl<'a, T> VisibilityGraphBuilder<'a, T> {
+impl<'a, T> VisibilityGraphBuilder<'a, T>
+{
     /// Specifies features to compute for each node.
     ///
     /// Features are computed after the graph structure is built.
@@ -346,8 +347,44 @@ impl<'a, T> VisibilityGraphBuilder<'a, T> {
     ///     .unwrap();
     /// ```
     pub fn natural_visibility(self) -> Result<VisibilityGraph<T>, GraphError> {
-        // Implementation will be provided
-        todo!("Natural visibility algorithm implementation")
+        use crate::algorithms::{create_visibility_edges, natural_visibility};
+        // Check for empty series
+        if self.series.is_empty() {
+            Err(GraphError::EmptyTimeSeries).expect("TODO: panic message");
+        }
+
+        // Extract values
+        let val : Vec<T> = self.series.values.iter().map(|v| {
+            match v {
+                Some(x) => *x,
+                None => f64::NAN, // Placeholder for missing values
+            }
+        }).collect();
+
+        // Check for all missing values
+        if val.is_empty(){
+            return Err(GraphError::AllValuesMissing);
+        }
+
+        // Compute edges using natural visibility algorithm
+        let edges : HashMap<(usize, usize), f64> =
+            create_visibility_edges::new(&val,
+                                        natural_visibility,
+                                        |_, _, _, _| {1.0})
+            .compute_edges();
+
+        {
+
+        // Compute adjacency list
+        let adj : Vec<Vec<f64>> = build_adjacency_list(val.len(), &edges);
+
+
+        Ok(VisibilityGraph{
+            node_count: val.len(),
+            edges: HashMap::new(),
+            adjacency: vec![],
+            node_features: vec![],
+        })}
     }
 
     /// Constructs a horizontal visibility graph.
@@ -406,6 +443,17 @@ impl fmt::Display for GraphError {
         }
     }
 }
+
+
+fn build_adjacency_list(node_count: usize, edges: &HashMap<(usize, usize), f64>) -> Vec<Vec<f64>> {
+    let mut adjacency = vec![Vec::new(); node_count];
+    for &(src, dst) in edges.keys() {
+        adjacency[src].push(edges.get(&(src, dst)).copied().unwrap_or(0.0));
+        adjacency[dst].push(*adjacency[src].last().unwrap()); // Undirected
+    }
+    adjacency
+}
+
 
 impl std::error::Error for GraphError {}
 

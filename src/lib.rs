@@ -100,4 +100,3 @@ pub use time_series::{TimeSeries, TimeSeriesError};
 pub use visibility_graph::{VisibilityGraph, VisibilityGraphBuilder, GraphError};
 pub use features::{Feature, FeatureSet, BuiltinFeature};
 pub use features::missing_data::{MissingDataHandler, MissingDataStrategy, ImputationError};
-

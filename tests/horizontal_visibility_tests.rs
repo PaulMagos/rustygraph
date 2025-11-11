@@ -1,11 +1,12 @@
 // Integration tests for horizontal visibility algorithm
 
-use rustygraph::algorithms::horizontal::{compute_edges, compute_edges_weighted};
+use rustygraph::algorithms::{horizontal_visibility};
+use rustygraph::algorithms::{visibility_weighted};
 
 #[test]
 fn test_simple_series() {
     let series = vec![1.0, 2.0, 1.0];
-    let edges = compute_edges(&series);
+    let edges = horizontal_visibility(&series);
     // Expected: (0,1), (1,2) at minimum
     assert!(edges.len() >= 2);
 }
@@ -15,7 +16,7 @@ fn test_weighted_edges() {
     let series = vec![1.0, 3.0, 2.0];
 
     // Weight by temporal distance
-    let edges = compute_edges_weighted(&series, |i, j, _, _| {
+    let edges = visibility_weighted(&series, horizontal_visibility, |i, j, _, _| {
         (j - i) as f64
     });
 
@@ -32,7 +33,7 @@ fn test_value_based_weights() {
     let series = vec![1.0, 2.0, 3.0];
 
     // Weight by sum of values
-    let edges = compute_edges_weighted(&series, |_, _, vi, vj| {
+    let edges = visibility_weighted(&series, horizontal_visibility, |_, _, vi, vj| {
         vi + vj
     });
 
@@ -45,7 +46,7 @@ fn test_value_based_weights() {
 #[test]
 fn test_monotonic_increasing() {
     let series = vec![1.0, 2.0, 3.0, 4.0];
-    let edges = compute_edges(&series);
+    let edges = horizontal_visibility(&series);
     // Should have at least adjacent connections
     assert!(edges.len() >= 3);
 }
@@ -53,7 +54,7 @@ fn test_monotonic_increasing() {
 #[test]
 fn test_monotonic_decreasing() {
     let series = vec![4.0, 3.0, 2.0, 1.0];
-    let edges = compute_edges(&series);
+    let edges = horizontal_visibility(&series);
     // Should have at least adjacent connections
     assert!(edges.len() >= 3);
 }
@@ -61,7 +62,7 @@ fn test_monotonic_decreasing() {
 #[test]
 fn test_flat_series() {
     let series = vec![2.0, 2.0, 2.0, 2.0];
-    let edges = compute_edges(&series);
+    let edges = horizontal_visibility(&series);
     // All points at same height should see each other
     assert!(edges.len() >= 3);
 }
@@ -69,21 +70,21 @@ fn test_flat_series() {
 #[test]
 fn test_empty_series() {
     let series: Vec<f64> = vec![];
-    let edges = compute_edges(&series);
+    let edges = horizontal_visibility(&series);
     assert_eq!(edges.len(), 0);
 }
 
 #[test]
 fn test_single_point() {
     let series = vec![1.0];
-    let edges = compute_edges(&series);
+    let edges = horizontal_visibility(&series);
     assert_eq!(edges.len(), 0);
 }
 
 #[test]
 fn test_two_points() {
     let series = vec![1.0, 2.0];
-    let edges = compute_edges(&series);
+    let edges = horizontal_visibility(&series);
     // Should have one edge connecting them
     assert!(!edges.is_empty());
 }
@@ -93,7 +94,7 @@ fn test_value_difference_weights() {
     let series: Vec<f64> = vec![1.0, 3.0, 2.0];
 
     // Weight by absolute value difference
-    let edges = compute_edges_weighted(&series, |_, _, vi, vj| {
+    let edges = visibility_weighted(&series, horizontal_visibility, |_, _, vi, vj| {
         (vj - vi).abs()
     });
 

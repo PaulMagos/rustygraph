@@ -312,7 +312,7 @@ impl<T> Default for FeatureSet<T> {
 /// ```rust
 /// use rustygraph::{FeatureSet, BuiltinFeature};
 ///
-/// let features = FeatureSet::new()
+/// let features : FeatureSet<BuiltinFeature> = FeatureSet::new()
 ///     .add_builtin(BuiltinFeature::DeltaForward)
 ///     .add_builtin(BuiltinFeature::LocalMean)
 ///     .add_builtin(BuiltinFeature::IsLocalMax);

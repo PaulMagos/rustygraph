@@ -63,7 +63,7 @@ use std::fmt;
 #[derive(Debug, Clone)]
 pub struct TimeSeries<T> {
     /// Timestamps for each data point
-    pub timestamps: Vec<f64>,
+    pub timestamps: Vec<T>,
     /// Data values (None indicates missing data)
     pub values: Vec<Option<T>>,
 }
@@ -90,12 +90,16 @@ impl<T> TimeSeries<T> {
     /// assert_eq!(series.len(), 3);
     /// assert_eq!(series.timestamps, vec![0.0, 1.0, 2.0]);
     /// ```
-    pub fn from_raw(values: Vec<T>) -> Self {
+    pub fn from_raw(values: Vec<T>) -> Result<Self, TimeSeriesError>  where Vec<T>: FromIterator<usize>{
+        if values.is_empty() {
+            return Err(TimeSeriesError::EmptyData);
+        }
+        
         let n = values.len();
-        let timestamps: Vec<f64> = (0..n).map(|i| i as f64).collect();
+        let timestamps: Vec<T> = (0..n).map(|i| i).collect();
         let values: Vec<Option<T>> = values.into_iter().map(Some).collect();
         
-        TimeSeries { timestamps, values }
+        Ok(TimeSeries { timestamps, values })
     }
 
     /// Creates a time series with explicit timestamps.
@@ -120,7 +124,7 @@ impl<T> TimeSeries<T> {
     ///     vec![Some(1.0), None, Some(3.0)]
     /// ).unwrap();
     /// ```
-    pub fn new(timestamps: Vec<f64>, values: Vec<Option<T>>) -> Result<Self, TimeSeriesError> {
+    pub fn new(timestamps: Vec<T>, values: Vec<Option<T>>) -> Result<Self, TimeSeriesError> {
         if timestamps.len() != values.len() {
             return Err(TimeSeriesError::LengthMismatch {
                 timestamps: timestamps.len(),
@@ -238,4 +242,3 @@ impl fmt::Display for TimeSeriesError {
 }
 
 impl std::error::Error for TimeSeriesError {}
-

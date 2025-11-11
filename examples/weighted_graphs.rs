@@ -3,7 +3,7 @@
 //! This example demonstrates how to create weighted visibility graphs
 //! with custom edge weight functions.
 
-use rustygraph::algorithms::{natural_visibility_weighted, horizontal_visibility_weighted};
+use rustygraph::algorithms::{natural_visibility, horizontal_visibility, visibility_weighted};
 
 fn main() {
     println!("=== RustyGraph Weighted Graphs Example ===\n");
@@ -12,7 +12,7 @@ fn main() {
 
     // Example 1: Natural visibility with value difference weights
     println!("1. Natural visibility - Value difference weights:");
-    let edges = natural_visibility_weighted(&series, |_, _, vi, vj| {
+    let edges = visibility_weighted(&series, natural_visibility, |_, _, vi, vj| {
         (vj - vi).abs()
     });
 
@@ -22,7 +22,7 @@ fn main() {
 
     // Example 2: Natural visibility with temporal distance weights
     println!("\n2. Natural visibility - Temporal distance weights:");
-    let edges = natural_visibility_weighted(&series, |i, j, _, _| {
+    let edges = visibility_weighted(&series, natural_visibility, |i, j, _, _| {
         (j - i) as f64
     });
 
@@ -32,7 +32,7 @@ fn main() {
 
     // Example 3: Horizontal visibility with geometric mean weights
     println!("\n3. Horizontal visibility - Geometric mean weights:");
-    let edges = horizontal_visibility_weighted(&series, |_, _, vi, vj| {
+    let edges = visibility_weighted(&series, horizontal_visibility, |_, _, vi, vj| {
         (vi * vj).sqrt()
     });
 
@@ -46,7 +46,7 @@ fn main() {
     let min_val = series.iter().fold(f64::INFINITY, |a, &b| a.min(b));
     let range = max_val - min_val;
 
-    let edges = natural_visibility_weighted(&series, |_, _, vi, vj| {
+    let edges = visibility_weighted(&series, natural_visibility(), |_, _, vi, vj| {
         if range > 0.0 {
             (vj - vi).abs() / range
         } else {
@@ -60,7 +60,7 @@ fn main() {
 
     // Example 5: Constant weights (equivalent to unweighted)
     println!("\n5. Constant weights (unweighted equivalent):");
-    let edges = horizontal_visibility_weighted(&series, |_, _, _, _| 1.0);
+    let edges = visibility_weighted(&series, horizontal_visibility, |_, _, _, _| 1.0);
 
     println!("  All edges have weight 1.0");
     println!("  Total edges: {}", edges.len());
