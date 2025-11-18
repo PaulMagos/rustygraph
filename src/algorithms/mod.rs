@@ -16,27 +16,10 @@
 //!
 //! # Examples
 //!
-//! ## Basic unweighted graph
+//! ## Basic usage
 //!
-//! ```rust
-//! use rustygraph::algorithms::VisibilityEdges;
-//!
-//! let series = vec![1.0, 3.0, 2.0, 4.0];
-//! let edges = natural_visibility(&series);
-//! ```
-//!
-//! ## Weighted graph with custom weights
-//!
-//! ```rust
-//! use rustygraph::algorithms::natural::compute_edges_weighted;
-//!
-//! let series = vec![1.0, 3.0, 2.0, 4.0];
-//! 
-//! // Weight by value difference
-//! let edges = compute_edges_weighted(&series, |_, _, vi, vj| {
-//!     (vj - vi).abs()
-//! });
-//! ```
+//! See the main library documentation and examples for complete usage patterns.
+//! The algorithms are primarily used through the `VisibilityGraph` API.
 //!
 //! # References
 //!
@@ -130,7 +113,7 @@ where
 /// use rustygraph::TimeSeries;
 ///
 /// let series = TimeSeries::from_raw(vec![1.0, 3.0, 2.0, 4.0]).unwrap();
-/// let edges = visibility_weighted(&series, VisibilityType::Natural, |_, _, vi, vj| {
+/// let edges = visibility_weighted(&series, VisibilityType::Natural, |_, _, vi: f64, vj: f64| {
 ///     (vj - vi).abs()
 /// });
 /// ```

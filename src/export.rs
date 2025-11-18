@@ -4,6 +4,7 @@
 //! to various formats for analysis and visualization.
 
 use crate::VisibilityGraph;
+use std::collections::HashSet;
 use std::fmt::Write;
 
 /// Export format for graphs.
@@ -262,6 +263,227 @@ where
             }
             writeln!(output).unwrap();
         }
+
+        output
+    }
+
+    /// Exports the graph to GraphViz DOT format for visualization.
+    ///
+    /// The DOT format can be rendered with GraphViz tools like `dot`, `neato`,
+    /// or online tools like GraphvizOnline.
+    ///
+    /// # Returns
+    ///
+    /// DOT format string
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use rustygraph::{TimeSeries, VisibilityGraph};
+    ///
+    /// let series = TimeSeries::from_raw(vec![1.0, 3.0, 2.0]).unwrap();
+    /// let graph = VisibilityGraph::from_series(&series)
+    ///     .natural_visibility()
+    ///     .unwrap();
+    ///
+    /// let dot = graph.to_dot();
+    /// std::fs::write("graph.dot", dot).unwrap();
+    /// // Then: dot -Tpng graph.dot -o graph.png
+    /// ```
+    pub fn to_dot(&self) -> String {
+        let mut output = String::new();
+
+        let graph_type = if self.directed { "digraph" } else { "graph" };
+        let edge_op = if self.directed { "->" } else { "--" };
+
+        writeln!(output, "{} {{", graph_type).unwrap();
+        writeln!(output, "  rankdir=LR;").unwrap();
+        writeln!(output, "  node [shape=circle];").unwrap();
+        writeln!(output).unwrap();
+
+        // Nodes
+        for i in 0..self.node_count {
+            write!(output, "  {} [label=\"{}\"]", i, i).unwrap();
+
+            // Add features as tooltip if present
+            if let Some(features) = self.node_features.get(i) {
+                if !features.is_empty() {
+                    write!(output, " [tooltip=\"").unwrap();
+                    let mut first = true;
+                    for (name, value) in features {
+                        if !first {
+                            write!(output, "\\n").unwrap();
+                        }
+                        write!(output, "{}: {:.2}", name, value).unwrap();
+                        first = false;
+                    }
+                    write!(output, "\"]").unwrap();
+                }
+            }
+            writeln!(output, ";").unwrap();
+        }
+
+        writeln!(output).unwrap();
+
+        // Edges
+        for (&(src, dst), &weight) in &self.edges {
+            if self.directed || src < dst {
+                write!(output, "  {} {} {}", src, edge_op, dst).unwrap();
+                if weight != 1.0 {
+                    write!(output, " [label=\"{:.2}\"]", weight).unwrap();
+                }
+                writeln!(output, ";").unwrap();
+            }
+        }
+
+        writeln!(output, "}}").unwrap();
+        output
+    }
+
+    /// Exports the graph to DOT format with custom node labels.
+    ///
+    /// # Arguments
+    ///
+    /// - `node_labels`: Function that returns a label for each node
+    ///
+    /// # Returns
+    ///
+    /// DOT format string with custom labels
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use rustygraph::{TimeSeries, VisibilityGraph};
+    ///
+    /// let series = TimeSeries::from_raw(vec![1.0, 3.0, 2.0]).unwrap();
+    /// let graph = VisibilityGraph::from_series(&series)
+    ///     .natural_visibility()
+    ///     .unwrap();
+    ///
+    /// let dot = graph.to_dot_with_labels(|i| format!("Node {}", i));
+    /// ```
+    pub fn to_dot_with_labels<F>(&self, node_labels: F) -> String
+    where
+        F: Fn(usize) -> String,
+    {
+        let mut output = String::new();
+
+        let graph_type = if self.directed { "digraph" } else { "graph" };
+        let edge_op = if self.directed { "->" } else { "--" };
+
+        writeln!(output, "{} {{", graph_type).unwrap();
+        writeln!(output, "  rankdir=LR;").unwrap();
+        writeln!(output, "  node [shape=circle];").unwrap();
+        writeln!(output).unwrap();
+
+        // Nodes with custom labels
+        for i in 0..self.node_count {
+            writeln!(output, "  {} [label=\"{}\"];", i, node_labels(i)).unwrap();
+        }
+
+        writeln!(output).unwrap();
+
+        // Edges
+        for (&(src, dst), &weight) in &self.edges {
+            if self.directed || src < dst {
+                write!(output, "  {} {} {}", src, edge_op, dst).unwrap();
+                if weight != 1.0 {
+                    write!(output, " [label=\"{:.2}\"]", weight).unwrap();
+                }
+                writeln!(output, ";").unwrap();
+            }
+        }
+
+        writeln!(output, "}}").unwrap();
+        output
+    }
+
+    /// Exports the graph to GraphML format.
+    ///
+    /// GraphML is an XML-based file format for graphs, supported by many
+    /// graph analysis tools including Gephi, Cytoscape, and yEd.
+    ///
+    /// # Returns
+    ///
+    /// GraphML format string
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use rustygraph::{TimeSeries, VisibilityGraph};
+    ///
+    /// let series = TimeSeries::from_raw(vec![1.0, 3.0, 2.0]).unwrap();
+    /// let graph = VisibilityGraph::from_series(&series)
+    ///     .natural_visibility()
+    ///     .unwrap();
+    ///
+    /// let graphml = graph.to_graphml();
+    /// std::fs::write("graph.graphml", graphml).unwrap();
+    /// ```
+    pub fn to_graphml(&self) -> String {
+        let mut output = String::new();
+
+        // XML header
+        writeln!(output, "<?xml version=\"1.0\" encoding=\"UTF-8\"?>").unwrap();
+        writeln!(output, "<graphml xmlns=\"http://graphml.graphdrawing.org/xmlns\"").unwrap();
+        writeln!(output, "         xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\"").unwrap();
+        writeln!(output, "         xsi:schemaLocation=\"http://graphml.graphdrawing.org/xmlns").unwrap();
+        writeln!(output, "         http://graphml.graphdrawing.org/xmlns/1.0/graphml.xsd\">").unwrap();
+        writeln!(output).unwrap();
+
+        // Define attributes
+        writeln!(output, "  <key id=\"weight\" for=\"edge\" attr.name=\"weight\" attr.type=\"double\"/>").unwrap();
+
+        // Define feature attributes
+        if !self.node_features.is_empty() {
+            let mut all_features: HashSet<String> = HashSet::new();
+            for features in &self.node_features {
+                for name in features.keys() {
+                    all_features.insert(name.clone());
+                }
+            }
+            let mut sorted_features: Vec<_> = all_features.into_iter().collect();
+            sorted_features.sort();
+
+            for feature in &sorted_features {
+                writeln!(output, "  <key id=\"{}\" for=\"node\" attr.name=\"{}\" attr.type=\"double\"/>",
+                    feature, feature).unwrap();
+            }
+        }
+        writeln!(output).unwrap();
+
+        // Graph element
+        let edge_default = if self.directed { "directed" } else { "undirected" };
+        writeln!(output, "  <graph id=\"G\" edgedefault=\"{}\">", edge_default).unwrap();
+
+        // Nodes
+        for i in 0..self.node_count {
+            writeln!(output, "    <node id=\"n{}\">", i).unwrap();
+
+            // Node features
+            if let Some(features) = self.node_features.get(i) {
+                for (name, value) in features {
+                    writeln!(output, "      <data key=\"{}\">{}</data>", name, value).unwrap();
+                }
+            }
+
+            writeln!(output, "    </node>").unwrap();
+        }
+
+        // Edges
+        let mut edge_id = 0;
+        for (&(src, dst), &weight) in &self.edges {
+            if self.directed || src < dst {
+                writeln!(output, "    <edge id=\"e{}\" source=\"n{}\" target=\"n{}\">",
+                    edge_id, src, dst).unwrap();
+                writeln!(output, "      <data key=\"weight\">{}</data>", weight).unwrap();
+                writeln!(output, "    </edge>").unwrap();
+                edge_id += 1;
+            }
+        }
+
+        writeln!(output, "  </graph>").unwrap();
+        writeln!(output, "</graphml>").unwrap();
 
         output
     }

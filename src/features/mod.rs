@@ -28,7 +28,7 @@
 //! ```rust
 //! use rustygraph::{FeatureSet, BuiltinFeature};
 //!
-//! let features = FeatureSet::new()
+//! let features = FeatureSet::<f64>::new()
 //!     .add_builtin(BuiltinFeature::DeltaForward)
 //!     .add_builtin(BuiltinFeature::LocalSlope)
 //!     .add_builtin(BuiltinFeature::LocalMean);
@@ -39,7 +39,7 @@
 //! ```rust
 //! use rustygraph::FeatureSet;
 //!
-//! let features = FeatureSet::new()
+//! let features = FeatureSet::<f64>::new()
 //!     .add_function("squared", |series, idx| {
 //!         series[idx].map(|v| v * v)
 //!     });
@@ -58,7 +58,8 @@ use missing_data::MissingDataHandler;
 /// # Examples
 ///
 /// ```rust
-/// use rustygraph::features::{Feature, MissingDataHandler};
+/// use rustygraph::features::Feature;
+/// use rustygraph::features::missing_data::MissingDataHandler;
 ///
 /// struct RangeFeature {
 ///     window: usize,
@@ -150,7 +151,7 @@ pub trait Feature<T>: Send + Sync {
 /// ```rust
 /// use rustygraph::{FeatureSet, BuiltinFeature, MissingDataStrategy};
 ///
-/// let features = FeatureSet::new()
+/// let features = FeatureSet::<f64>::new()
 ///     .add_builtin(BuiltinFeature::DeltaForward)
 ///     .add_builtin(BuiltinFeature::LocalSlope)
 ///     .add_function("log", |series, idx| {
@@ -191,7 +192,7 @@ impl<T> FeatureSet<T> {
     /// ```rust
     /// use rustygraph::{FeatureSet, BuiltinFeature};
     ///
-    /// let features = FeatureSet::new()
+    /// let features = FeatureSet::<f64>::new()
     ///     .add_builtin(BuiltinFeature::DeltaForward)
     ///     .add_builtin(BuiltinFeature::LocalSlope);
     /// ```
@@ -255,7 +256,7 @@ impl<T> FeatureSet<T> {
     /// ```rust
     /// use rustygraph::FeatureSet;
     ///
-    /// let features = FeatureSet::new()
+    /// let features = FeatureSet::<f64>::new()
     ///     .add_function("squared", |series, idx| {
     ///         series[idx].map(|v| v * v)
     ///     })
@@ -331,7 +332,7 @@ impl<T> FeatureSet<T> {
     /// ```rust
     /// use rustygraph::{FeatureSet, BuiltinFeature};
     ///
-    /// let features = FeatureSet::new()
+    /// let features = FeatureSet::<f64>::new()
     ///     .add_builtin(BuiltinFeature::DeltaForward)
     ///     .add_builtin(BuiltinFeature::LocalSlope);
     ///
@@ -363,7 +364,7 @@ impl<T> Default for FeatureSet<T> {
 /// ```rust
 /// use rustygraph::{FeatureSet, BuiltinFeature};
 ///
-/// let features : FeatureSet<BuiltinFeature> = FeatureSet::new()
+/// let features = FeatureSet::<f64>::new()
 ///     .add_builtin(BuiltinFeature::DeltaForward)
 ///     .add_builtin(BuiltinFeature::LocalMean)
 ///     .add_builtin(BuiltinFeature::IsLocalMax);

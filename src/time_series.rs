@@ -38,7 +38,7 @@ use std::fmt;
 /// use rustygraph::TimeSeries;
 ///
 /// // From raw values with auto-generated timestamps
-/// let series = TimeSeries::from_raw(vec![1.0, 3.0, 2.0, 4.0, 1.0]);
+/// let series = TimeSeries::from_raw(vec![1.0, 3.0, 2.0, 4.0, 1.0]).unwrap();
 /// assert_eq!(series.len(), 5);
 ///
 /// // With explicit timestamps and missing values
@@ -86,7 +86,7 @@ impl<T> TimeSeries<T> {
     /// ```rust
     /// use rustygraph::TimeSeries;
     ///
-    /// let series = TimeSeries::from_raw(vec![1.0, 2.0, 3.0]);
+    /// let series = TimeSeries::from_raw(vec![1.0, 2.0, 3.0]).unwrap();
     /// assert_eq!(series.len(), 3);
     /// assert_eq!(series.timestamps, vec![0.0, 1.0, 2.0]);
     /// ```
@@ -149,7 +149,7 @@ impl<T> TimeSeries<T> {
     /// ```rust
     /// use rustygraph::TimeSeries;
     ///
-    /// let series = TimeSeries::from_raw(vec![1.0, 2.0, 3.0]);
+    /// let series = TimeSeries::from_raw(vec![1.0, 2.0, 3.0]).unwrap();
     /// assert_eq!(series.len(), 3);
     /// ```
     pub fn len(&self) -> usize {
@@ -163,7 +163,7 @@ impl<T> TimeSeries<T> {
     /// ```rust
     /// use rustygraph::TimeSeries;
     ///
-    /// let series = TimeSeries::from_raw(vec![1.0]);
+    /// let series = TimeSeries::from_raw(vec![1.0]).unwrap();
     /// assert!(!series.is_empty());
     /// ```
     pub fn is_empty(&self) -> bool {

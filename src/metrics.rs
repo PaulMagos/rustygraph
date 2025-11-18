@@ -359,11 +359,137 @@ impl<T> VisibilityGraph<T> {
         if n < 2 {
             return 0.0;
         }
-
+        
         let max_edges = n * (n - 1) / 2;
         let actual_edges = self.edges.len();
-
+        
         actual_edges as f64 / max_edges as f64
+    }
+    
+    /// Computes betweenness centrality for a specific node.
+    ///
+    /// Betweenness centrality measures how often a node appears on shortest
+    /// paths between other nodes. High betweenness indicates the node is
+    /// important for connectivity.
+    ///
+    /// # Arguments
+    ///
+    /// - `node`: Node index
+    ///
+    /// # Returns
+    ///
+    /// Betweenness centrality value, or None if node doesn't exist
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use rustygraph::{TimeSeries, VisibilityGraph};
+    ///
+    /// let series = TimeSeries::from_raw(vec![1.0, 3.0, 2.0, 4.0, 1.0]).unwrap();
+    /// let graph = VisibilityGraph::from_series(&series)
+    ///     .natural_visibility()
+    ///     .unwrap();
+    ///
+    /// if let Some(bc) = graph.betweenness_centrality(2) {
+    ///     println!("Betweenness centrality for node 2: {:.4}", bc);
+    /// }
+    /// ```
+    pub fn betweenness_centrality(&self, node: usize) -> Option<f64> {
+        if node >= self.node_count {
+            return None;
+        }
+        
+        let mut centrality = 0.0;
+        
+        // For each pair of nodes (s, t)
+        for s in 0..self.node_count {
+            if s == node {
+                continue;
+            }
+            
+            // BFS from s to find all shortest paths
+            let mut distances = vec![usize::MAX; self.node_count];
+            let mut num_paths = vec![0usize; self.node_count];
+            let mut queue = VecDeque::new();
+            
+            distances[s] = 0;
+            num_paths[s] = 1;
+            queue.push_back(s);
+            
+            while let Some(v) = queue.pop_front() {
+                // Get neighbors of v
+                for &(src, dst) in self.edges.keys() {
+                    let neighbor = if src == v {
+                        dst
+                    } else if dst == v {
+                        src
+                    } else {
+                        continue;
+                    };
+                    
+                    if distances[neighbor] == usize::MAX {
+                        distances[neighbor] = distances[v] + 1;
+                        num_paths[neighbor] = num_paths[v];
+                        queue.push_back(neighbor);
+                    } else if distances[neighbor] == distances[v] + 1 {
+                        num_paths[neighbor] += num_paths[v];
+                    }
+                }
+            }
+            
+            // For each target t, check if node is on shortest path from s to t
+            for t in 0..self.node_count {
+                if t == s || t == node {
+                    continue;
+                }
+                
+                if distances[t] != usize::MAX && distances[node] != usize::MAX {
+                    // Check if node is on a shortest path from s to t
+                    if distances[s] + distances[node] + 
+                       self.shortest_path_length(node, t).unwrap_or(usize::MAX) == distances[t] {
+                        // Count paths through node
+                        if num_paths[t] > 0 {
+                            centrality += (num_paths[node] as f64) / (num_paths[t] as f64);
+                        }
+                    }
+                }
+            }
+        }
+        
+        // Normalize by the number of pairs
+        let n = self.node_count;
+        if n > 2 {
+            centrality /= ((n - 1) * (n - 2)) as f64;
+        }
+        
+        Some(centrality)
+    }
+    
+    /// Computes betweenness centrality for all nodes.
+    ///
+    /// # Returns
+    ///
+    /// Vector of betweenness centrality values for each node
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use rustygraph::{TimeSeries, VisibilityGraph};
+    ///
+    /// let series = TimeSeries::from_raw(vec![1.0, 3.0, 2.0, 4.0, 1.0]).unwrap();
+    /// let graph = VisibilityGraph::from_series(&series)
+    ///     .natural_visibility()
+    ///     .unwrap();
+    ///
+    /// let centralities = graph.betweenness_centrality_all();
+    /// for (i, bc) in centralities.iter().enumerate() {
+    ///     println!("Node {}: {:.4}", i, bc);
+    /// }
+    /// ```
+    pub fn betweenness_centrality_all(&self) -> Vec<f64> {
+        (0..self.node_count)
+            .map(|i| self.betweenness_centrality(i).unwrap_or(0.0))
+            .collect()
     }
 }
 

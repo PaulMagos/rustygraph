@@ -8,7 +8,7 @@
 //! ```rust
 //! use rustygraph::{TimeSeries, VisibilityGraph};
 //!
-//! let series = TimeSeries::from_raw(vec![1.0, 3.0, 2.0, 4.0, 1.0]);
+//! let series = TimeSeries::from_raw(vec![1.0, 3.0, 2.0, 4.0, 1.0]).unwrap();
 //! let graph = VisibilityGraph::from_series(&series)
 //!     .natural_visibility()
 //!     .unwrap();
@@ -34,7 +34,7 @@ use std::fmt;
 /// ```rust
 /// use rustygraph::{TimeSeries, VisibilityGraph};
 ///
-/// let series = TimeSeries::from_raw(vec![1.0, 3.0, 2.0, 4.0, 1.0]);
+/// let series = TimeSeries::from_raw(vec![1.0, 3.0, 2.0, 4.0, 1.0]).unwrap();
 /// let graph = VisibilityGraph::from_series(&series)
 ///     .natural_visibility()
 ///     .unwrap();
@@ -50,7 +50,7 @@ use std::fmt;
 /// ```rust
 /// use rustygraph::{TimeSeries, VisibilityGraph, FeatureSet, BuiltinFeature};
 ///
-/// let series = TimeSeries::from_raw(vec![1.0, 3.0, 2.0, 4.0]);
+/// let series = TimeSeries::from_raw(vec![1.0, 3.0, 2.0, 4.0]).unwrap();
 /// let graph = VisibilityGraph::from_series(&series)
 ///     .with_features(
 ///         FeatureSet::new()
@@ -102,7 +102,7 @@ impl<T> VisibilityGraph<T> {
     /// ```rust
     /// use rustygraph::{TimeSeries, VisibilityGraph};
     ///
-    /// let series = TimeSeries::from_raw(vec![1.0, 2.0, 3.0]);
+    /// let series = TimeSeries::from_raw(vec![1.0, 2.0, 3.0]).unwrap();
     /// let graph = VisibilityGraph::from_series(&series)
     ///     .natural_visibility()
     ///     .unwrap();
@@ -125,13 +125,13 @@ impl<T> VisibilityGraph<T> {
     /// ```rust
     /// use rustygraph::{TimeSeries, VisibilityGraph};
     ///
-    /// let series = TimeSeries::from_raw(vec![1.0, 3.0, 2.0]);
+    /// let series = TimeSeries::from_raw(vec![1.0, 3.0, 2.0]).unwrap();
     /// let graph = VisibilityGraph::from_series(&series)
     ///     .natural_visibility()
     ///     .unwrap();
     ///
-    /// for (src, dst) in graph.edges() {
-    ///     println!("{} -> {}", src, dst);
+    /// for (&(src, dst), &weight) in graph.edges() {
+    ///     println!("{} -> {}: {}", src, dst, weight);
     /// }
     /// ```
     pub fn edges(&self) -> &HashMap<(usize, usize), f64> {
@@ -153,7 +153,7 @@ impl<T> VisibilityGraph<T> {
     /// ```rust
     /// use rustygraph::{TimeSeries, VisibilityGraph};
     ///
-    /// let series = TimeSeries::from_raw(vec![1.0, 3.0, 2.0, 4.0]);
+    /// let series = TimeSeries::from_raw(vec![1.0, 3.0, 2.0, 4.0]).unwrap();
     /// let graph = VisibilityGraph::from_series(&series)
     ///     .natural_visibility()
     ///     .unwrap();
@@ -181,7 +181,7 @@ impl<T> VisibilityGraph<T> {
     /// ```rust
     /// use rustygraph::{TimeSeries, VisibilityGraph};
     ///
-    /// let series = TimeSeries::from_raw(vec![1.0, 3.0, 2.0, 4.0]);
+    /// let series = TimeSeries::from_raw(vec![1.0, 3.0, 2.0, 4.0]).unwrap();
     /// let graph = VisibilityGraph::from_series(&series)
     ///     .natural_visibility()
     ///     .unwrap();
@@ -204,7 +204,7 @@ impl<T> VisibilityGraph<T> {
     /// ```rust
     /// use rustygraph::{TimeSeries, VisibilityGraph};
     ///
-    /// let series = TimeSeries::from_raw(vec![1.0, 3.0, 2.0, 4.0]);
+    /// let series = TimeSeries::from_raw(vec![1.0, 3.0, 2.0, 4.0]).unwrap();
     /// let graph = VisibilityGraph::from_series(&series)
     ///     .natural_visibility()
     ///     .unwrap();
@@ -232,7 +232,7 @@ impl<T> VisibilityGraph<T> {
     /// ```rust
     /// use rustygraph::{TimeSeries, VisibilityGraph, FeatureSet, BuiltinFeature};
     ///
-    /// let series = TimeSeries::from_raw(vec![1.0, 3.0, 2.0]);
+    /// let series = TimeSeries::from_raw(vec![1.0, 3.0, 2.0]).unwrap();
     /// let graph = VisibilityGraph::from_series(&series)
     ///     .with_features(
     ///         FeatureSet::new().add_builtin(BuiltinFeature::DeltaForward)
@@ -260,7 +260,7 @@ impl<T> VisibilityGraph<T> {
     /// ```rust
     /// use rustygraph::{TimeSeries, VisibilityGraph};
     ///
-    /// let series = TimeSeries::from_raw(vec![1.0, 3.0, 2.0]);
+    /// let series = TimeSeries::from_raw(vec![1.0, 3.0, 2.0]).unwrap();
     /// let graph = VisibilityGraph::from_series(&series)
     ///     .natural_visibility()
     ///     .unwrap();
@@ -289,7 +289,7 @@ impl<T> VisibilityGraph<T> {
 /// ```rust
 /// use rustygraph::{TimeSeries, VisibilityGraph, FeatureSet, BuiltinFeature};
 ///
-/// let series = TimeSeries::from_raw(vec![1.0, 2.0, 3.0]);
+/// let series = TimeSeries::from_raw(vec![1.0, 2.0, 3.0]).unwrap();
 /// let graph = VisibilityGraph::from_series(&series)
 ///     .with_features(
 ///         FeatureSet::new().add_builtin(BuiltinFeature::DeltaForward)
@@ -321,7 +321,7 @@ where
     /// ```rust
     /// use rustygraph::{TimeSeries, VisibilityGraph, FeatureSet, BuiltinFeature};
     ///
-    /// let series = TimeSeries::from_raw(vec![1.0, 2.0, 3.0]);
+    /// let series = TimeSeries::from_raw(vec![1.0, 2.0, 3.0]).unwrap();
     /// let graph = VisibilityGraph::from_series(&series)
     ///     .with_features(
     ///         FeatureSet::new()
@@ -378,7 +378,7 @@ where
     /// ```rust
     /// use rustygraph::{TimeSeries, VisibilityGraph};
     ///
-    /// let series = TimeSeries::from_raw(vec![1.0, 3.0, 2.0, 4.0, 1.0]);
+    /// let series = TimeSeries::from_raw(vec![1.0, 3.0, 2.0, 4.0, 1.0]).unwrap();
     /// let graph = VisibilityGraph::from_series(&series)
     ///     .natural_visibility()
     ///     .unwrap();
@@ -446,7 +446,7 @@ where
     /// ```rust
     /// use rustygraph::{TimeSeries, VisibilityGraph};
     ///
-    /// let series = TimeSeries::from_raw(vec![1.0, 3.0, 2.0, 4.0, 1.0]);
+    /// let series = TimeSeries::from_raw(vec![1.0, 3.0, 2.0, 4.0, 1.0]).unwrap();
     /// let graph = VisibilityGraph::from_series(&series)
     ///     .horizontal_visibility()
     ///     .unwrap();

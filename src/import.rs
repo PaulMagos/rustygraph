@@ -4,8 +4,12 @@
 //! CSV files and other common formats.
 
 use crate::{TimeSeries, TimeSeriesError};
+
+#[cfg(feature = "csv-import")]
 use std::path::Path;
+#[cfg(feature = "csv-import")]
 use std::fs::File;
+#[cfg(feature = "csv-import")]
 use std::io::{BufRead, BufReader};
 
 /// Options for CSV import.
@@ -72,19 +76,19 @@ where
         let file = File::open(path).map_err(|_| TimeSeriesError::EmptyData)?;
         let reader = BufReader::new(file);
         let mut lines = reader.lines();
-        
+
         // Skip header if present
         if options.has_header {
             lines.next();
         }
-        
+
         let mut timestamps = Vec::new();
         let mut values = Vec::new();
-        
+
         for (idx, line) in lines.enumerate() {
             let line = line.map_err(|_| TimeSeriesError::EmptyData)?;
             let parts: Vec<&str> = line.split(options.delimiter).collect();
-            
+
             // Parse timestamp
             let timestamp = if let Some(ts_col) = options.timestamp_column {
                 if ts_col >= parts.len() {
@@ -97,7 +101,7 @@ where
             } else {
                 T::from(idx as f64)
             };
-            
+
             // Parse value
             let value = if options.value_column >= parts.len() {
                 return Err(TimeSeriesError::EmptyData);
@@ -112,18 +116,18 @@ where
                         .map_err(|_| TimeSeriesError::EmptyData)?,
                 )
             };
-            
+
             timestamps.push(timestamp);
             values.push(value);
         }
-        
+
         if timestamps.is_empty() {
             return Err(TimeSeriesError::EmptyData);
         }
-        
+
         TimeSeries::new(timestamps, values)
     }
-    
+
     /// Imports a time series from a CSV string.
     ///
     /// # Arguments
@@ -152,18 +156,18 @@ where
         options: CsvImportOptions,
     ) -> Result<Self, TimeSeriesError> {
         let mut lines = csv_data.lines();
-        
+
         // Skip header if present
         if options.has_header {
             lines.next();
         }
-        
+
         let mut timestamps = Vec::new();
         let mut values = Vec::new();
-        
+
         for (idx, line) in lines.enumerate() {
             let parts: Vec<&str> = line.split(options.delimiter).collect();
-            
+
             // Parse timestamp
             let timestamp = if let Some(ts_col) = options.timestamp_column {
                 if ts_col >= parts.len() {
@@ -176,7 +180,7 @@ where
             } else {
                 T::from(idx as f64)
             };
-            
+
             // Parse value
             let value = if options.value_column >= parts.len() {
                 return Err(TimeSeriesError::EmptyData);
@@ -191,15 +195,15 @@ where
                         .map_err(|_| TimeSeriesError::EmptyData)?,
                 )
             };
-            
+
             timestamps.push(timestamp);
             values.push(value);
         }
-        
+
         if timestamps.is_empty() {
             return Err(TimeSeriesError::EmptyData);
         }
-        
+
         TimeSeries::new(timestamps, values)
     }
 }
@@ -207,7 +211,7 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
-    
+
     #[test]
     fn test_csv_string_import() {
         let csv_data = "timestamp,value\n0,1.0\n1,2.0\n2,3.0";
@@ -216,10 +220,10 @@ mod tests {
             CsvImportOptions::default(),
         )
         .unwrap();
-        
+
         assert_eq!(series.len(), 3);
     }
-    
+
     #[test]
     fn test_csv_with_missing() {
         let csv_data = "timestamp,value\n0,1.0\n1,\n2,3.0";
@@ -230,7 +234,7 @@ mod tests {
             delimiter: ',',
             missing_value: String::new(),
         };
-        
+
         let series = TimeSeries::<f64>::from_csv_string(csv_data, options).unwrap();
         assert_eq!(series.len(), 3);
         assert!(series.values[1].is_none());

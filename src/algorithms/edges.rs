@@ -35,15 +35,7 @@
 //! println!("Horizontal visibility edges: {:?}", edges);
 //! ```
 //!
-//!
-//! ```rust
-//! use rustygraph::algorithms::natural::compute_edges;
-//!
-//! let series = vec![1.0, 3.0, 2.0, 4.0, 1.0];
-//! let edges = compute_edges(&series);
-//!
-//! println!("Natural visibility edges: {:?}", edges);
-//! ```
+//! See the main `VisibilityGraph` API for usage examples.
 //!
 //! # References
 //!
@@ -64,23 +56,6 @@
 /// # Returns
 ///
 /// Hashmap of edges as (source, target) pairs with weights
-///
-/// # Examples
-///
-/// ```rust
-/// use rustygraph::algorithms::{create_visibility_edges, natural_visibility};
-///
-/// let data = vec![1.0, 3.0, 2.0, 4.0, 1.0];
-/// let edges = create_visibility_edges{
-///     &data,
-///     natural_visibility,
-///     |_, _, vi, vj| (vj - vi).abs()
-/// }.compute_edges();
-///
-/// for (src, dst), weight in edges {
-///     println!("{} -> {}: {}", src, dst, weight);
-/// }
-/// ```
 use std::collections::HashMap;
 use crate::TimeSeries;
 
@@ -132,11 +107,11 @@ where
     /// ```rust
     /// use rustygraph::{TimeSeries, algorithms::{VisibilityEdges, VisibilityType}};
     ///
-    /// let series = TimeSeries::from_raw(vec![1.0, 3.0, 2.0, 4.0]);
+    /// let series = TimeSeries::from_raw(vec![1.0, 3.0, 2.0, 4.0]).unwrap();
     /// let edges = VisibilityEdges::new(
     ///     &series,
     ///     VisibilityType::Natural,
-    ///     |_, _, vi, vj| (vj - vi).abs()
+    ///     |_, _, vi: f64, vj: f64| (vj - vi).abs()
     /// ).compute_edges();
     /// ```
     pub fn new(series: &'a TimeSeries<T>, rule: VisibilityType, weight_fn: F) -> Self {
@@ -161,7 +136,7 @@ where
     /// ```rust
     /// use rustygraph::{TimeSeries, algorithms::{VisibilityEdges, VisibilityType}};
     ///
-    /// let series = TimeSeries::from_raw(vec![1.0, 3.0, 2.0, 4.0]);
+    /// let series = TimeSeries::from_raw(vec![1.0, 3.0, 2.0, 4.0]).unwrap();
     /// let edges = VisibilityEdges::new(
     ///     &series,
     ///     VisibilityType::Natural,

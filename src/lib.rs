@@ -17,7 +17,7 @@
 //!
 //! # fn main() -> Result<(), Box<dyn std::error::Error>> {
 //! // Create a time series
-//! let series = TimeSeries::from_raw(vec![1.0, 3.0, 2.0, 4.0, 1.0]);
+//! let series = TimeSeries::from_raw(vec![1.0, 3.0, 2.0, 4.0, 1.0])?;
 //!
 //! // Build a natural visibility graph
 //! let graph = VisibilityGraph::from_series(&series)
@@ -99,6 +99,22 @@ pub mod metrics;
 pub mod statistics;
 pub mod import;
 pub mod parallel;
+pub mod batch;
+pub mod community;
+pub mod datasets;
+pub mod lazy;
+pub mod advanced;
+pub mod simd;
+pub mod motifs;
+pub mod export_advanced;
+
+// Integration modules (feature-gated)
+#[cfg(feature = "petgraph-integration")]
+pub mod petgraph_integration;
+#[cfg(feature = "ndarray-support")]
+pub mod ndarray_support;
+#[cfg(feature = "python-bindings")]
+pub mod python;
 
 // Re-export main types for convenience
 pub use time_series::{TimeSeries, TimeSeriesError};
@@ -108,3 +124,5 @@ pub use features::missing_data::{MissingDataHandler, MissingDataStrategy, Imputa
 pub use export::{ExportFormat, ExportOptions};
 pub use statistics::GraphStatistics;
 pub use import::CsvImportOptions;
+pub use community::Communities;
+pub use batch::{BatchProcessor, BatchResults, compare_graphs};

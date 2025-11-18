@@ -1,8 +1,8 @@
 [package]
 name = "rustygraph"
-version = "0.1.0"
+version = "0.4.0"
 edition = "2021"
-authors = ["Paul Magos <paul@example.com>"]
+authors = ["Paul Magos <paul@examplze.com>"]
 description = "A high-performance library for visibility graph computation from time series data"
 documentation = "https://docs.rs/rustygraph"
 repository = "https://github.com/paulmagos/rustygraph"
@@ -14,6 +14,7 @@ readme = "README.md"
 [lib]
 name = "rustygraph"
 path = "src/lib.rs"
+crate-type = ["lib", "cdylib"]
 
 [dependencies]
 dataloader = "0.18.0"
@@ -22,13 +23,36 @@ futures = "0.3"
 # Optional features
 rayon = { version = "1.8", optional = true }
 csv = { version = "1.3", optional = true }
+rustfft = { version = "6.2", optional = true }
+ndarray = { version = "0.16", optional = true }
+ndarray-npy = { version = "0.9", optional = true }
+parquet = { version = "57.0.0", optional = true }
+arrow = { version = "57.0.0", optional = true }
+hdf5 = { version = "0.8", optional = true }
+petgraph = { version = "0.6", optional = true }
+pyo3 = { version = "0.22", optional = true, features = ["extension-module"] }
+numpy = { version = "0.22", optional = true }
 
 [features]
 default = []
 parallel = ["rayon"]
 csv-import = ["csv"]
+advanced-features = ["rustfft"]
+npy-export = ["ndarray", "ndarray-npy"]
+parquet-export = ["parquet", "arrow"]
+hdf5-export = ["hdf5"]
+petgraph-integration = ["petgraph"]
+python-bindings = ["pyo3", "numpy", "ndarray"]
+ndarray-support = ["ndarray"]
+
 
 [dev-dependencies]
+criterion = { version = "0.5", features = ["html_reports"] }
+proptest = "1.4"
+
+[[bench]]
+name = "visibility_benchmarks"
+harness = false
 
 [[example]]
 name = "basic_usage"
