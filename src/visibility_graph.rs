@@ -65,11 +65,22 @@ pub struct VisibilityGraph<T> {
     /// Number of nodes (data points)
     pub node_count: usize,
     /// Graph edges as (source, target) pairs
-    edges: HashMap<(usize, usize), f64>,
+    pub(crate) edges: HashMap<(usize, usize), f64>,
     /// Adjacency list representation
     adjacency: Vec<Vec<f64>>,
     /// Computed features for each node
     pub node_features: Vec<HashMap<String, T>>,
+    /// Whether the graph is directed
+    pub directed: bool,
+}
+
+/// Direction mode for visibility graphs.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum GraphDirection {
+    /// Undirected graph (default) - edges go both ways
+    Undirected,
+    /// Directed graph - edges only from earlier to later time points
+    Directed,
 }
 
 impl<T> VisibilityGraph<T> {
@@ -100,6 +111,7 @@ impl<T> VisibilityGraph<T> {
         VisibilityGraphBuilder {
             series,
             feature_set: None,
+            direction: GraphDirection::Undirected,
         }
     }
 
@@ -289,9 +301,12 @@ pub struct VisibilityGraphBuilder<'a, T> {
     #[allow(dead_code)] // Will be used when algorithms are implemented
     series: &'a TimeSeries<T>,
     feature_set: Option<FeatureSet<T>>,
+    direction: GraphDirection,
 }
 
 impl<'a, T> VisibilityGraphBuilder<'a, T>
+where
+    T: Copy + PartialOrd + Into<f64>,
 {
     /// Specifies features to compute for each node.
     ///
@@ -321,6 +336,28 @@ impl<'a, T> VisibilityGraphBuilder<'a, T>
         self
     }
 
+    /// Sets the graph direction mode.
+    ///
+    /// # Arguments
+    ///
+    /// - `direction`: Whether the graph should be directed or undirected
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use rustygraph::{TimeSeries, VisibilityGraph, GraphDirection};
+    ///
+    /// let series = TimeSeries::from_raw(vec![1.0, 2.0, 3.0]).unwrap();
+    /// let graph = VisibilityGraph::from_series(&series)
+    ///     .with_direction(GraphDirection::Directed)
+    ///     .natural_visibility()
+    ///     .unwrap();
+    /// ```
+    pub fn with_direction(mut self, direction: GraphDirection) -> Self {
+        self.direction = direction;
+        self
+    }
+
     /// Constructs a natural visibility graph.
     ///
     /// In a natural visibility graph, two nodes (i, yi) and (j, yj) are connected
@@ -346,45 +383,49 @@ impl<'a, T> VisibilityGraphBuilder<'a, T>
     ///     .natural_visibility()
     ///     .unwrap();
     /// ```
-    pub fn natural_visibility(self) -> Result<VisibilityGraph<T>, GraphError> {
-        use crate::algorithms::{create_visibility_edges, natural_visibility};
+    pub fn natural_visibility(self) -> Result<VisibilityGraph<T>, GraphError>
+    where
+        T: Copy + PartialOrd + Into<f64> + std::ops::Add<Output = T> + std::ops::Sub<Output = T>
+           + std::ops::Mul<Output = T> + std::ops::Div<Output = T> + From<f64>,
+    {
+        use crate::algorithms::{create_visibility_edges, VisibilityType};
+
         // Check for empty series
         if self.series.is_empty() {
-            Err(GraphError::EmptyTimeSeries).expect("TODO: panic message");
+            return Err(GraphError::EmptyTimeSeries);
         }
 
-        // Extract values
-        let val : Vec<T> = self.series.values.iter().map(|v| {
-            match v {
-                Some(x) => *x,
-                None => f64::NAN, // Placeholder for missing values
-            }
-        }).collect();
-
         // Check for all missing values
-        if val.is_empty(){
+        if self.series.values.iter().all(|v| v.is_none()) {
             return Err(GraphError::AllValuesMissing);
         }
 
         // Compute edges using natural visibility algorithm
-        let edges : HashMap<(usize, usize), f64> =
-            create_visibility_edges::new(&val,
-                                        natural_visibility,
-                                        |_, _, _, _| {1.0})
-            .compute_edges();
-
-        {
+        let edges: HashMap<(usize, usize), f64> =
+            create_visibility_edges::new(
+                self.series,
+                VisibilityType::Natural,
+                |_, _, _, _| 1.0
+            ).compute_edges();
 
         // Compute adjacency list
-        let adj : Vec<Vec<f64>> = build_adjacency_list(val.len(), &edges);
+        let directed = matches!(self.direction, GraphDirection::Directed);
+        let adj: Vec<Vec<f64>> = build_adjacency_list(self.series.len(), &edges, directed);
 
+        // Compute node features if feature set is provided
+        let node_features = if let Some(feature_set) = self.feature_set {
+            compute_node_features(&self.series.values, &feature_set)
+        } else {
+            vec![]
+        };
 
-        Ok(VisibilityGraph{
-            node_count: val.len(),
-            edges: HashMap::new(),
-            adjacency: vec![],
-            node_features: vec![],
-        })}
+        Ok(VisibilityGraph {
+            node_count: self.series.len(),
+            edges,
+            adjacency: adj,
+            node_features,
+            directed,
+        })
     }
 
     /// Constructs a horizontal visibility graph.
@@ -410,9 +451,49 @@ impl<'a, T> VisibilityGraphBuilder<'a, T>
     ///     .horizontal_visibility()
     ///     .unwrap();
     /// ```
-    pub fn horizontal_visibility(self) -> Result<VisibilityGraph<T>, GraphError> {
-        // Implementation will be provided
-        todo!("Horizontal visibility algorithm implementation")
+    pub fn horizontal_visibility(self) -> Result<VisibilityGraph<T>, GraphError>
+    where
+        T: Copy + PartialOrd + Into<f64> + std::ops::Add<Output = T> + std::ops::Sub<Output = T>
+           + std::ops::Mul<Output = T> + std::ops::Div<Output = T> + From<f64>,
+    {
+        use crate::algorithms::{create_visibility_edges, VisibilityType};
+
+        // Check for empty series
+        if self.series.is_empty() {
+            return Err(GraphError::EmptyTimeSeries);
+        }
+
+        // Check for all missing values
+        if self.series.values.iter().all(|v| v.is_none()) {
+            return Err(GraphError::AllValuesMissing);
+        }
+
+        // Compute edges using horizontal visibility algorithm
+        let edges: HashMap<(usize, usize), f64> =
+            create_visibility_edges::new(
+                self.series,
+                VisibilityType::Horizontal,
+                |_, _, _, _| 1.0
+            ).compute_edges();
+
+        // Compute adjacency list
+        let directed = matches!(self.direction, GraphDirection::Directed);
+        let adj: Vec<Vec<f64>> = build_adjacency_list(self.series.len(), &edges, directed);
+
+        // Compute node features if feature set is provided
+        let node_features = if let Some(feature_set) = self.feature_set {
+            compute_node_features(&self.series.values, &feature_set)
+        } else {
+            vec![]
+        };
+
+        Ok(VisibilityGraph {
+            node_count: self.series.len(),
+            edges,
+            adjacency: adj,
+            node_features,
+            directed,
+        })
     }
 }
 
@@ -445,15 +526,45 @@ impl fmt::Display for GraphError {
 }
 
 
-fn build_adjacency_list(node_count: usize, edges: &HashMap<(usize, usize), f64>) -> Vec<Vec<f64>> {
+fn build_adjacency_list(node_count: usize, edges: &HashMap<(usize, usize), f64>, directed: bool) -> Vec<Vec<f64>> {
     let mut adjacency = vec![Vec::new(); node_count];
     for &(src, dst) in edges.keys() {
-        adjacency[src].push(edges.get(&(src, dst)).copied().unwrap_or(0.0));
-        adjacency[dst].push(*adjacency[src].last().unwrap()); // Undirected
+        let weight = edges.get(&(src, dst)).copied().unwrap_or(0.0);
+        adjacency[src].push(weight);
+        if !directed {
+            adjacency[dst].push(weight); // Add reverse edge for undirected
+        }
     }
     adjacency
 }
 
+/// Computes all features for all nodes in the series
+pub(crate) fn compute_node_features<T>(
+    series: &[Option<T>],
+    feature_set: &FeatureSet<T>,
+) -> Vec<HashMap<String, T>>
+where
+    T: Copy + PartialOrd + std::ops::Add<Output = T> + std::ops::Sub<Output = T>
+       + std::ops::Mul<Output = T> + std::ops::Div<Output = T> + From<f64> + Into<f64>,
+{
+
+    let mut node_features = Vec::with_capacity(series.len());
+
+    for i in 0..series.len() {
+        let mut features = HashMap::new();
+
+        // Compute each feature for this node
+        for feature in &feature_set.features {
+            if let Some(value) = feature.compute(series, i, &feature_set.missing_strategy) {
+                features.insert(feature.name().to_string(), value);
+            }
+        }
+
+        node_features.push(features);
+    }
+
+    node_features
+}
 
 impl std::error::Error for GraphError {}
 

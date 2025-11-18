@@ -6,7 +6,7 @@ use rustygraph::{TimeSeries, VisibilityGraph, FeatureSet, BuiltinFeature};
 #[test]
 fn test_basic_pipeline() {
     // Create time series
-    let series = TimeSeries::from_raw(vec![1.0, 3.0, 2.0, 4.0]);
+    let series = TimeSeries::from_raw(vec![1.0, 3.0, 2.0, 4.0]).unwrap();
 
     // Verify series creation
     assert_eq!(series.len(), 4);
@@ -23,7 +23,7 @@ fn test_basic_pipeline() {
 #[test]
 fn test_pipeline_with_features() {
     // Create time series
-    let series = TimeSeries::from_raw(vec![1.0, 2.0, 3.0]);
+    let series = TimeSeries::from_raw(vec![1.0, 2.0, 3.0]).unwrap();
 
     // Create feature set
     let features = FeatureSet::new()
@@ -60,19 +60,17 @@ fn test_pipeline_with_missing_data() {
 
 #[test]
 fn test_weighted_graph_pipeline() {
-    use rustygraph::algorithms::natural_visibility;
-    use rustygraph::algorithms::visibility_weighted;
+    use rustygraph::algorithms::{visibility_weighted, VisibilityType};
 
-    let series: Vec<f64> = vec![1.0, 3.0, 2.0, 4.0];
+    let series = TimeSeries::from_raw(vec![1.0, 3.0, 2.0, 4.0]).unwrap();
 
     // Create weighted edges
-    let edges = visibility_weighted(&series, natural_visibility, |i, j, _, _| {
+    let edges = visibility_weighted(&series, VisibilityType::Natural, |i, j, _, _| {
         (j - i) as f64
     });
 
-    // This will pass once algorithms are implemented
-    // For now, just verify the function signature works
-    assert_eq!(edges.len(), 0); // Will be > 0 once implemented
+    // Verify edges are computed
+    assert!(edges.len() > 0);
 }
 
 #[test]

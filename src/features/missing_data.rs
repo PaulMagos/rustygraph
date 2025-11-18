@@ -263,3 +263,183 @@ impl fmt::Display for ImputationError {
 
 impl std::error::Error for ImputationError {}
 
+// Implement MissingDataHandler for MissingDataStrategy
+impl<T> MissingDataHandler<T> for MissingDataStrategy
+where
+    T: Copy + PartialOrd + std::ops::Add<Output = T> + std::ops::Div<Output = T> + From<f64>,
+{
+    fn handle(&self, series: &[Option<T>], index: usize) -> Option<T> {
+        match self {
+            MissingDataStrategy::LinearInterpolation => {
+                if index == 0 || index >= series.len() - 1 {
+                    return None;
+                }
+
+                // Find previous valid value
+                let mut prev_val = None;
+                for i in (0..index).rev() {
+                    if let Some(v) = series[i] {
+                        prev_val = Some(v);
+                        break;
+                    }
+                }
+
+                // Find next valid value
+                let mut next_val = None;
+                for i in (index + 1)..series.len() {
+                    if let Some(v) = series[i] {
+                        next_val = Some(v);
+                        break;
+                    }
+                }
+
+                match (prev_val, next_val) {
+                    (Some(p), Some(n)) => Some((p + n) / T::from(2.0)),
+                    _ => None,
+                }
+            }
+
+            MissingDataStrategy::ForwardFill => {
+                // Find previous valid value
+                for i in (0..index).rev() {
+                    if let Some(v) = series[i] {
+                        return Some(v);
+                    }
+                }
+                None
+            }
+
+            MissingDataStrategy::BackwardFill => {
+                // Find next valid value
+                for i in (index + 1)..series.len() {
+                    if let Some(v) = series[i] {
+                        return Some(v);
+                    }
+                }
+                None
+            }
+
+            MissingDataStrategy::NearestNeighbor => {
+                let mut prev_val = None;
+                let mut prev_dist = usize::MAX;
+                for i in (0..index).rev() {
+                    if let Some(v) = series[i] {
+                        prev_val = Some(v);
+                        prev_dist = index - i;
+                        break;
+                    }
+                }
+
+                let mut next_val = None;
+                let mut next_dist = usize::MAX;
+                for i in (index + 1)..series.len() {
+                    if let Some(v) = series[i] {
+                        next_val = Some(v);
+                        next_dist = i - index;
+                        break;
+                    }
+                }
+
+                match (prev_val, next_val) {
+                    (Some(p), Some(n)) => {
+                        if prev_dist <= next_dist {
+                            Some(p)
+                        } else {
+                            Some(n)
+                        }
+                    }
+                    (Some(p), None) => Some(p),
+                    (None, Some(n)) => Some(n),
+                    (None, None) => None,
+                }
+            }
+
+            MissingDataStrategy::MeanImputation { window_size } => {
+                let start = index.saturating_sub(window_size / 2);
+                let end = (index + window_size / 2 + 1).min(series.len());
+
+                let mut sum = None;
+                let mut count = 0;
+
+                for i in start..end {
+                    if i != index {
+                        if let Some(val) = series[i] {
+                            sum = Some(sum.map_or(val, |s| s + val));
+                            count += 1;
+                        }
+                    }
+                }
+
+                if count > 0 {
+                    sum.map(|s| s / T::from(count as f64))
+                } else {
+                    None
+                }
+            }
+
+            MissingDataStrategy::MedianImputation { window_size } => {
+                let start = index.saturating_sub(window_size / 2);
+                let end = (index + window_size / 2 + 1).min(series.len());
+
+                let mut values: Vec<T> = Vec::new();
+                for i in start..end {
+                    if i != index {
+                        if let Some(val) = series[i] {
+                            values.push(val);
+                        }
+                    }
+                }
+
+                if values.is_empty() {
+                    return None;
+                }
+
+                values.sort_by(|a, b| {
+                    if a < b {
+                        std::cmp::Ordering::Less
+                    } else if a > b {
+                        std::cmp::Ordering::Greater
+                    } else {
+                        std::cmp::Ordering::Equal
+                    }
+                });
+
+                let mid = values.len() / 2;
+                if values.len() % 2 == 0 {
+                    Some((values[mid - 1] + values[mid]) / T::from(2.0))
+                } else {
+                    Some(values[mid])
+                }
+            }
+
+            MissingDataStrategy::ZeroFill => Some(T::from(0.0)),
+
+            MissingDataStrategy::Drop => None,
+
+            MissingDataStrategy::Fallback { primary, fallback } => {
+                primary.handle(series, index).or_else(|| fallback.handle(series, index))
+            }
+        }
+    }
+
+    fn requires_context(&self) -> bool {
+        match self {
+            MissingDataStrategy::ZeroFill | MissingDataStrategy::Drop => false,
+            _ => true,
+        }
+    }
+
+    fn window_size(&self) -> Option<usize> {
+        match self {
+            MissingDataStrategy::MeanImputation { window_size }
+            | MissingDataStrategy::MedianImputation { window_size } => Some(*window_size),
+            MissingDataStrategy::Fallback { primary, .. } => {
+                // Type annotation needed for recursive call
+                let handler: &dyn MissingDataHandler<T> = primary.as_ref();
+                handler.window_size()
+            }
+            _ => None,
+        }
+    }
+}
+

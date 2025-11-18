@@ -159,8 +159,8 @@ pub trait Feature<T>: Send + Sync {
 ///     .with_missing_data_strategy(MissingDataStrategy::LinearInterpolation);
 /// ```
 pub struct FeatureSet<T> {
-    features: Vec<Box<dyn Feature<T>>>,
-    missing_strategy: missing_data::MissingDataStrategy,
+    pub(crate) features: Vec<Box<dyn Feature<T>>>,
+    pub(crate) missing_strategy: missing_data::MissingDataStrategy,
 }
 
 impl<T> FeatureSet<T> {
@@ -195,9 +195,28 @@ impl<T> FeatureSet<T> {
     ///     .add_builtin(BuiltinFeature::DeltaForward)
     ///     .add_builtin(BuiltinFeature::LocalSlope);
     /// ```
-    pub fn add_builtin(self, _feature: BuiltinFeature) -> Self {
-        // Implementation will add the appropriate feature
-        todo!("Built-in feature implementation")
+    pub fn add_builtin(mut self, feature: BuiltinFeature) -> Self
+    where
+        T: Copy + PartialOrd + std::ops::Add<Output = T> + std::ops::Sub<Output = T>
+           + std::ops::Mul<Output = T> + std::ops::Div<Output = T> + From<f64> + Into<f64> + 'static,
+    {
+        use builtin::*;
+
+        let boxed: Box<dyn Feature<T>> = match feature {
+            BuiltinFeature::DeltaForward => Box::new(DeltaForwardFeature),
+            BuiltinFeature::DeltaBackward => Box::new(DeltaBackwardFeature),
+            BuiltinFeature::DeltaSymmetric => Box::new(DeltaSymmetricFeature),
+            BuiltinFeature::LocalSlope => Box::new(LocalSlopeFeature),
+            BuiltinFeature::Acceleration => Box::new(AccelerationFeature),
+            BuiltinFeature::LocalMean => Box::new(LocalMeanFeature { window_size: 5 }),
+            BuiltinFeature::LocalVariance => Box::new(LocalVarianceFeature { window_size: 5 }),
+            BuiltinFeature::IsLocalMax => Box::new(IsLocalMaxFeature),
+            BuiltinFeature::IsLocalMin => Box::new(IsLocalMinFeature),
+            BuiltinFeature::ZScore => Box::new(ZScoreFeature),
+        };
+
+        self.features.push(boxed);
+        self
     }
 
     /// Adds a custom feature implementation.
@@ -244,12 +263,44 @@ impl<T> FeatureSet<T> {
     ///         series[idx].map(|v| 1.0 / v)
     ///     });
     /// ```
-    pub fn add_function<F>(self, _name: &str, _f: F) -> Self
+    pub fn add_function<F>(mut self, name: &str, f: F) -> Self
     where
+        T: Send + Sync + 'static,
         F: Fn(&[Option<T>], usize) -> Option<T> + Send + Sync + 'static,
     {
-        // Implementation will wrap the function in a Feature implementation
-        todo!("Function wrapper implementation")
+        struct FunctionFeature<T, F> {
+            name: String,
+            func: F,
+            _phantom: std::marker::PhantomData<T>,
+        }
+
+        impl<T, F> Feature<T> for FunctionFeature<T, F>
+        where
+            T: Send + Sync,
+            F: Fn(&[Option<T>], usize) -> Option<T> + Send + Sync,
+        {
+            fn compute(
+                &self,
+                series: &[Option<T>],
+                index: usize,
+                _missing_handler: &dyn MissingDataHandler<T>,
+            ) -> Option<T> {
+                (self.func)(series, index)
+            }
+
+            fn name(&self) -> &str {
+                &self.name
+            }
+        }
+
+        let feature = FunctionFeature {
+            name: name.to_string(),
+            func: f,
+            _phantom: std::marker::PhantomData,
+        };
+
+        self.features.push(Box::new(feature));
+        self
     }
 
     /// Sets the global missing data handling strategy.

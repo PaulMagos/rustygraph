@@ -82,32 +82,64 @@
 /// }
 /// ```
 use std::collections::HashMap;
+use crate::TimeSeries;
 
-// Visibility type enum
+/// Visibility graph algorithm type.
+///
+/// Determines which visibility criterion is used to connect nodes.
 #[derive(Debug, Clone, Copy)]
 pub enum VisibilityType {
+    /// Natural visibility: nodes connected if line-of-sight is not blocked
     Natural,
+    /// Horizontal visibility: nodes connected if all intermediate values are lower
     Horizontal,
 }
 
-// Visibility edges computation struct with custom weight function
+/// Visibility edges computation with custom weight function.
+///
+/// This struct provides a flexible way to compute visibility graph edges
+/// with custom edge weights.
+///
+/// # Type Parameters
+///
+/// - `T`: Numeric type for time series values
+/// - `F`: Weight function type `Fn(usize, usize, T, T) -> f64`
 pub struct VisibilityEdges<'a, T, F>
 where
-    F: Fn(usize, usize, f64, f64) -> f64,
+    T: Copy + PartialOrd + Into<f64>,
+    F: Fn(usize, usize, T, T) -> f64,
 {
-    series: &'a [T],
+    series: &'a TimeSeries<T>,
     rule: VisibilityType,
     weight_fn: F,
 }
 
-// Implementation of the visibility edges computation
 impl<'a, T, F> VisibilityEdges<'a, T, F>
 where
-    F: Fn(usize, usize, f64, f64) -> f64,
+    T: Copy + PartialOrd + Into<f64>,
+    F: Fn(usize, usize, T, T) -> f64,
 {
-
-    // Creates a new VisibilityEdges instance
-    pub fn new(series: &'a [T], rule: VisibilityType, weight_fn: F) -> Self {
+    /// Creates a new visibility edges computation instance.
+    ///
+    /// # Arguments
+    ///
+    /// - `series`: Time series data
+    /// - `rule`: Visibility algorithm type
+    /// - `weight_fn`: Function to compute edge weights `(src_idx, dst_idx, src_val, dst_val) -> weight`
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use rustygraph::{TimeSeries, algorithms::{VisibilityEdges, VisibilityType}};
+    ///
+    /// let series = TimeSeries::from_raw(vec![1.0, 3.0, 2.0, 4.0]);
+    /// let edges = VisibilityEdges::new(
+    ///     &series,
+    ///     VisibilityType::Natural,
+    ///     |_, _, vi, vj| (vj - vi).abs()
+    /// ).compute_edges();
+    /// ```
+    pub fn new(series: &'a TimeSeries<T>, rule: VisibilityType, weight_fn: F) -> Self {
         Self {
             series,
             rule,
@@ -115,6 +147,29 @@ where
         }
     }
 
+    /// Computes all visibility edges in the time series.
+    ///
+    /// Returns a hashmap of directed edges with their computed weights.
+    ///
+    /// # Returns
+    ///
+    /// `HashMap<(usize, usize), f64>` where keys are `(source, target)` node indices
+    /// and values are edge weights computed by the weight function.
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use rustygraph::{TimeSeries, algorithms::{VisibilityEdges, VisibilityType}};
+    ///
+    /// let series = TimeSeries::from_raw(vec![1.0, 3.0, 2.0, 4.0]);
+    /// let edges = VisibilityEdges::new(
+    ///     &series,
+    ///     VisibilityType::Natural,
+    ///     |_, _, _, _| 1.0
+    /// ).compute_edges();
+    ///
+    /// println!("Found {} edges", edges.len());
+    /// ```
     pub fn compute_edges(&self) -> HashMap<(usize, usize), f64> {
         let mut edges = HashMap::new();
         let mut stack: Vec<usize> = Vec::new();
@@ -147,7 +202,7 @@ where
             let j = *stack.last().unwrap();
             let k = stack[stack.len() - 2];
             // Check if point j should be popped
-            if Self::should_pop(self.series, k, j, i) {
+            if self.should_pop(k, j, i) {
                 stack.pop();
             } else {
                 break;
@@ -165,7 +220,10 @@ where
         // Check visibility from each point in the stack to point i
         for &j in stack.iter().rev() {
             if self.is_visible(j, i) {
-                let w = (self.weight_fn)(j, i, self.series[j], self.series[i]);
+                // Unwrap is safe here as we only process non-None values
+                let vj = self.series.values[j].unwrap();
+                let vi = self.series.values[i].unwrap();
+                let w = (self.weight_fn)(j, i, vj, vi);
                 edges.insert((j, i), w);
             } else if matches!(self.rule, VisibilityType::Horizontal) {
                 break;
@@ -176,31 +234,40 @@ where
     // Determines if the point at index j is visible from point i based on the visibility rule
     fn is_visible(&self, j: usize, i: usize) -> bool {
         match self.rule {
-            VisibilityType::Natural => Self::is_visible_natural(self.series, j, i),
-            VisibilityType::Horizontal => Self::is_visible_horizontal(self.series, j, i),
+            VisibilityType::Natural => self.is_visible_natural(j, i),
+            VisibilityType::Horizontal => self.is_visible_horizontal(j, i),
         }
     }
 
     // Determines if the point at index j is visible from point i in natural visibility
-    fn is_visible_natural(series: &[f64], j: usize, i: usize) -> bool {
+    fn is_visible_natural(&self, j: usize, i: usize) -> bool {
         (j + 1..i).all(|k| {
-            let line_height =
-                series[j] + (series[i] - series[j]) * ((k - j) as f64 / (i - j) as f64);
-            series[k] < line_height
+            let vj: f64 = self.series.values[j].unwrap().into();
+            let vi: f64 = self.series.values[i].unwrap().into();
+            let vk: f64 = self.series.values[k].unwrap().into();
+            let line_height = vj + (vi - vj) * ((k - j) as f64 / (i - j) as f64);
+            vk < line_height
         })
     }
 
 
     // Determines if the point at index j is visible from point i in horizontal visibility
-    fn is_visible_horizontal(series: &[f64], j: usize, i: usize) -> bool {
-        let min_h = series[j].min(series[i]);
-        (j + 1..i).all(|k| series[k] < min_h)
+    fn is_visible_horizontal(&self, j: usize, i: usize) -> bool {
+        let vj = self.series.values[j].unwrap();
+        let vi = self.series.values[i].unwrap();
+        let min_h = if vj < vi { vj } else { vi };
+        (j + 1..i).all(|k| self.series.values[k].unwrap() < min_h)
     }
 
     // Determines if the point at index j should be popped from the envelope stack
-    fn should_pop(series: &[f64], k: usize, j: usize, i: usize) -> bool {
-        let slope_kj = (series[j] - series[k]) / ((j - k) as f64);
-        let slope_ki = (series[i] - series[k]) / ((i - k) as f64);
-        slope_ki >= slope_kj
+    fn should_pop(&self, k: usize, j: usize, i: usize) -> bool {
+        let vk: f64 = self.series.values[k].unwrap().into();
+        let vj: f64 = self.series.values[j].unwrap().into();
+        let vi: f64 = self.series.values[i].unwrap().into();
+        let slope_kj = (vj - vk) / ((j - k) as f64);
+        let slope_ki = (vi - vk) / ((i - k) as f64);
+        // Use strict inequality: point j is only hidden if slope_ki is strictly greater
+        // Points on the line (equal slopes) should remain visible
+        slope_ki > slope_kj
     }
 }

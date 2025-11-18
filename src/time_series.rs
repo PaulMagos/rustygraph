@@ -90,13 +90,16 @@ impl<T> TimeSeries<T> {
     /// assert_eq!(series.len(), 3);
     /// assert_eq!(series.timestamps, vec![0.0, 1.0, 2.0]);
     /// ```
-    pub fn from_raw(values: Vec<T>) -> Result<Self, TimeSeriesError>  where Vec<T>: FromIterator<usize>{
+    pub fn from_raw(values: Vec<T>) -> Result<Self, TimeSeriesError>
+    where
+        T: Copy + From<f64>,
+    {
         if values.is_empty() {
             return Err(TimeSeriesError::EmptyData);
         }
         
         let n = values.len();
-        let timestamps: Vec<T> = (0..n).map(|i| i).collect();
+        let timestamps: Vec<T> = (0..n).map(|i| T::from(i as f64)).collect();
         let values: Vec<Option<T>> = values.into_iter().map(Some).collect();
         
         Ok(TimeSeries { timestamps, values })
@@ -201,13 +204,31 @@ impl<T> TimeSeries<T> {
     ///     MissingDataStrategy::LinearInterpolation
     /// ).unwrap();
     /// ```
-    pub fn handle_missing(&self, _strategy: crate::features::missing_data::MissingDataStrategy) 
+    pub fn handle_missing(&self, strategy: crate::features::missing_data::MissingDataStrategy) 
         -> Result<Self, crate::features::missing_data::ImputationError> 
     where
-        T: Clone,
+        T: Copy + PartialOrd + std::ops::Add<Output = T> + std::ops::Div<Output = T> + From<f64>,
     {
-        // Implementation will be provided
-        todo!("Missing data handling implementation")
+        use crate::features::missing_data::{MissingDataHandler, ImputationError};
+        
+        let mut new_values = Vec::with_capacity(self.values.len());
+        
+        for i in 0..self.values.len() {
+            let value = if let Some(v) = self.values[i] {
+                Some(v)
+            } else {
+                // Try to impute the missing value
+                strategy.handle(&self.values, i)
+                    .ok_or_else(|| ImputationError::AllStrategiesFailed { index: i })?;
+                strategy.handle(&self.values, i)
+            };
+            new_values.push(value);
+        }
+        
+        Ok(TimeSeries {
+            timestamps: self.timestamps.clone(),
+            values: new_values,
+        })
     }
 }
 

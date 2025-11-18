@@ -4,7 +4,7 @@ use rustygraph::{TimeSeries, VisibilityGraph};
 
 #[test]
 fn test_graph_builder_basic() {
-    let series = TimeSeries::from_raw(vec![1.0, 2.0, 3.0]);
+    let series = TimeSeries::from_raw(vec![1.0, 2.0, 3.0]).unwrap();
     let _builder = VisibilityGraph::from_series(&series);
     // Just verify builder is created successfully
     // Implementation will be tested once algorithms are implemented
@@ -12,15 +12,14 @@ fn test_graph_builder_basic() {
 
 #[test]
 fn test_empty_series() {
-    let series: TimeSeries<f64> = TimeSeries::from_raw(vec![]);
-    let _builder = VisibilityGraph::from_series(&series);
-    // Builder should be created even for empty series
-    // Error should occur when trying to build the graph
+    // from_raw returns Err for empty series, so we expect it to fail
+    let result = TimeSeries::<f64>::from_raw(vec![]);
+    assert!(result.is_err());
 }
 
 #[test]
 fn test_single_point() {
-    let series = TimeSeries::from_raw(vec![1.0]);
+    let series = TimeSeries::from_raw(vec![1.0]).unwrap();
     let _builder = VisibilityGraph::from_series(&series);
     // Single point should create builder successfully
 }

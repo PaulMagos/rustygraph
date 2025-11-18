@@ -10,7 +10,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Create a simple time series
     println!("Creating time series...");
-    let series = TimeSeries::from_raw(vec![1.0, 3.0, 2.0, 4.0, 1.0]);
+    let series = TimeSeries::from_raw(vec![1.0, 3.0, 2.0, 4.0, 1.0])?;
     println!("Time series length: {}", series.len());
 
     // Build a natural visibility graph
@@ -24,7 +24,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Display edges
     println!("\nEdges:");
-    for (src, dst) in natural_graph.edges() {
+    for ((src, dst), _weight) in natural_graph.edges() {
         println!("  {} -> {}", src, dst);
     }
 
@@ -51,7 +51,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     for row in &matrix {
         print!("  [");
         for (j, &val) in row.iter().enumerate() {
-            print!("{}", if val { 1 } else { 0 });
+            print!("{}", if val > 0.0 { 1 } else { 0 });
             if j < row.len() - 1 {
                 print!(" ");
             }

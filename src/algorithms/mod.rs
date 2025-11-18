@@ -46,8 +46,105 @@
 
 mod edges;
 
+use crate::TimeSeries;
+
+pub use self::edges::{VisibilityEdges, VisibilityType};
+
+// Re-export for backward compatibility
 pub use self::edges::VisibilityEdges as create_visibility_edges;
-pub use self::edges::VisibilityType::Natural as natural_visibility;
-pub use self::edges::VisibilityType::Horizontal as horizontal_visibility;
+pub use self::edges::VisibilityType::Natural as natural_visibility_type;
+pub use self::edges::VisibilityType::Horizontal as horizontal_visibility_type;
+
+/// Computes natural visibility edges with default unweighted (weight=1.0) edges.
+///
+/// # Arguments
+///
+/// - `series`: Time series data as a slice
+///
+/// # Returns
+///
+/// Vector of (source, target, weight) tuples
+///
+/// # Examples
+///
+/// ```rust
+/// use rustygraph::algorithms::natural_visibility;
+/// use rustygraph::TimeSeries;
+///
+/// let series = TimeSeries::from_raw(vec![1.0, 3.0, 2.0, 4.0]).unwrap();
+/// let edges = natural_visibility(&series);
+/// ```
+pub fn natural_visibility<T>(series: &TimeSeries<T>) -> Vec<(usize, usize, f64)>
+where
+    T: Copy + PartialOrd + Into<f64>,
+{
+    let edges = VisibilityEdges::new(series, VisibilityType::Natural, |_, _, _, _| 1.0)
+        .compute_edges();
+    edges.into_iter().map(|((src, dst), w)| (src, dst, w)).collect()
+}
+
+/// Computes horizontal visibility edges with default unweighted (weight=1.0) edges.
+///
+/// # Arguments
+///
+/// - `series`: Time series data as a slice
+///
+/// # Returns
+///
+/// Vector of (source, target, weight) tuples
+///
+/// # Examples
+///
+/// ```rust
+/// use rustygraph::algorithms::horizontal_visibility;
+/// use rustygraph::TimeSeries;
+///
+/// let series = TimeSeries::from_raw(vec![1.0, 3.0, 2.0, 4.0]).unwrap();
+/// let edges = horizontal_visibility(&series);
+/// ```
+pub fn horizontal_visibility<T>(series: &TimeSeries<T>) -> Vec<(usize, usize, f64)>
+where
+    T: Copy + PartialOrd + Into<f64>,
+{
+    let edges = VisibilityEdges::new(series, VisibilityType::Horizontal, |_, _, _, _| 1.0)
+        .compute_edges();
+    edges.into_iter().map(|((src, dst), w)| (src, dst, w)).collect()
+}
+
+/// Computes visibility edges with a custom weight function.
+///
+/// # Arguments
+///
+/// - `series`: Time series data
+/// - `vis_type`: Visibility algorithm type (Natural or Horizontal)
+/// - `weight_fn`: Function to compute edge weights `(src_idx, dst_idx, src_val, dst_val) -> weight`
+///
+/// # Returns
+///
+/// Vector of (source, target, weight) tuples
+///
+/// # Examples
+///
+/// ```rust
+/// use rustygraph::algorithms::{visibility_weighted, VisibilityType};
+/// use rustygraph::TimeSeries;
+///
+/// let series = TimeSeries::from_raw(vec![1.0, 3.0, 2.0, 4.0]).unwrap();
+/// let edges = visibility_weighted(&series, VisibilityType::Natural, |_, _, vi, vj| {
+///     (vj - vi).abs()
+/// });
+/// ```
+pub fn visibility_weighted<T, F>(
+    series: &TimeSeries<T>,
+    vis_type: VisibilityType,
+    weight_fn: F,
+) -> Vec<(usize, usize, f64)>
+where
+    T: Copy + PartialOrd + Into<f64>,
+    F: Fn(usize, usize, T, T) -> f64,
+{
+    let edges = VisibilityEdges::new(series, vis_type, weight_fn).compute_edges();
+    edges.into_iter().map(|((src, dst), w)| (src, dst, w)).collect()
+}
 
 

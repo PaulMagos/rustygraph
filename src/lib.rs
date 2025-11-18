@@ -94,9 +94,17 @@ pub mod time_series;
 pub mod visibility_graph;
 pub mod features;
 pub mod algorithms;
+pub mod export;
+pub mod metrics;
+pub mod statistics;
+pub mod import;
+pub mod parallel;
 
 // Re-export main types for convenience
 pub use time_series::{TimeSeries, TimeSeriesError};
-pub use visibility_graph::{VisibilityGraph, VisibilityGraphBuilder, GraphError};
+pub use visibility_graph::{VisibilityGraph, VisibilityGraphBuilder, GraphError, GraphDirection};
 pub use features::{Feature, FeatureSet, BuiltinFeature};
 pub use features::missing_data::{MissingDataHandler, MissingDataStrategy, ImputationError};
+pub use export::{ExportFormat, ExportOptions};
+pub use statistics::GraphStatistics;
+pub use import::CsvImportOptions;
