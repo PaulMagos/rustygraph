@@ -19,6 +19,7 @@ crate-type = ["lib", "cdylib"]
 [dependencies]
 dataloader = "0.18.0"
 futures = "0.3"
+num_cpus = "1.16"
 
 # Optional features
 rayon = { version = "1.8", optional = true }
@@ -30,19 +31,23 @@ parquet = { version = "57.0.0", optional = true }
 arrow = { version = "57.0.0", optional = true }
 hdf5 = { version = "0.8", optional = true }
 petgraph = { version = "0.6", optional = true }
-pyo3 = { version = "0.22", optional = true, features = ["extension-module"] }
-numpy = { version = "0.22", optional = true }
+pyo3 = { version = "0.23", optional = true, features = ["extension-module", "abi3-py39"] }
+numpy = { version = "0.23", optional = true }
 
 [features]
-default = []
+default = ["parallel", "csv-import", "simd"]
 parallel = ["rayon"]
+simd = []
+cuda = []   # GPU acceleration with CUDA (NVIDIA, requires CUDA toolkit)
+metal = []  # GPU acceleration with Metal (Apple Silicon)
+opencl = [] # GPU acceleration with OpenCL (Universal)
 csv-import = ["csv"]
 advanced-features = ["rustfft"]
 npy-export = ["ndarray", "ndarray-npy"]
 parquet-export = ["parquet", "arrow"]
 hdf5-export = ["hdf5"]
 petgraph-integration = ["petgraph"]
-python-bindings = ["pyo3", "numpy", "ndarray"]
+python-bindings = ["pyo3", "numpy", "ndarray", "parallel", "simd"]
 ndarray-support = ["ndarray"]
 
 
@@ -66,3 +71,12 @@ path = "examples/with_features.rs"
 name = "weighted_graphs"
 path = "examples/weighted_graphs.rs"
 
+[[example]]
+name = "advanced_optimization"
+path = "examples/advanced_optimization.rs"
+required-features = ["advanced-features"]
+
+# Metal GPU support (Apple Silicon)
+[target.'cfg(target_os = "macos")'.dependencies]
+metal = "0.32.0"
+objc = "0.2"

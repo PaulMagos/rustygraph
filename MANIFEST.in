@@ -1,0 +1,8 @@
+include Cargo.toml
+include Cargo.lock
+include README.md
+include LICENSE
+include pyproject.toml
+recursive-include src *.rs
+recursive-include python *.py *.pyi
+

@@ -214,6 +214,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("\n8. SUMMARY");
     println!("──────────");
 
+    #[allow(unused_mut)]
     let mut formats_available = vec!["JSON", "CSV", "DOT", "GraphML"];
 
     #[cfg(feature = "npy-export")]

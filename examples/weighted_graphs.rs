@@ -17,7 +17,7 @@ fn main() {
         (vj - vi).abs()
     });
 
-    for (src, dst, weight) in &edges {
+    for ((src, dst), weight) in &edges {
         println!("  {} -> {} : weight = {:.2}", src, dst, weight);
     }
 
@@ -27,7 +27,7 @@ fn main() {
         (j - i) as f64
     });
 
-    for (src, dst, weight) in &edges {
+    for ((src, dst), weight) in &edges {
         println!("  {} -> {} : weight = {:.0}", src, dst, weight);
     }
 
@@ -37,7 +37,7 @@ fn main() {
         (vi * vj).sqrt()
     });
 
-    for (src, dst, weight) in &edges {
+    for ((src, dst), weight) in &edges {
         println!("  {} -> {} : weight = {:.2}", src, dst, weight);
     }
 
@@ -55,7 +55,7 @@ fn main() {
         }
     });
 
-    for (src, dst, weight) in &edges {
+    for ((src, dst), weight) in &edges {
         println!("  {} -> {} : weight = {:.3}", src, dst, weight);
     }
 

@@ -22,7 +22,7 @@ fn test_weighted_edges() {
     
     assert!(edges.len() >= 2);
     // Check that weights are computed
-    for (i, j, weight) in edges {
+    for ((i, j), weight) in edges {
         assert!(weight >= 0.0);
         println!("Edge ({}, {}) has weight {}", i, j, weight);
     }
@@ -35,7 +35,7 @@ fn test_constant_weights() {
     // Constant weight function
     let edges = visibility_weighted(&series, VisibilityType::Natural, |_, _, _, _| 1.0);
 
-    for (_, _, weight) in edges {
+    for ((_, _), weight) in edges {
         assert_eq!(weight, 1.0);
     }
 }

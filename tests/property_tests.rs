@@ -154,7 +154,7 @@ proptest! {
         let density = graph.density();
 
         // Property: Density should be in [0, 1]
-        prop_assert!(density >= 0.0 && density <= 1.0);
+        prop_assert!((0.0..=1.0).contains(&density));
     }
 }
 
@@ -170,7 +170,7 @@ proptest! {
         let cc = graph.average_clustering_coefficient();
 
         // Property: Clustering coefficient should be in [0, 1]
-        prop_assert!(cc >= 0.0 && cc <= 1.0);
+        prop_assert!((0.0..=1.0).contains(&cc));
     }
 }
 

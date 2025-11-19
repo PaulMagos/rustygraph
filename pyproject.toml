@@ -1,0 +1,62 @@
+[build-system]
+requires = ["maturin>=1.0,<2.0"]
+build-backend = "maturin"
+
+[project]
+name = "rustygraph"
+version = "0.4.0"
+description = "High-performance visibility graph computation for time series analysis"
+readme = "README.md"
+requires-python = ">=3.9"
+license = { text = "MIT" }
+authors = [
+    { name = "Paul Magos", email = "paul@example.com" }
+]
+keywords = [
+    "time-series",
+    "graph",
+    "visibility",
+    "network",
+    "complex-networks",
+    "visibility-graph",
+    "time-series-analysis"
+]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Science/Research",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Rust",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
+    "Topic :: Scientific/Engineering",
+    "Topic :: Software Development :: Libraries",
+]
+dependencies = [
+    "numpy>=1.20"
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0",
+    "pytest-cov>=4.0",
+    "black>=23.0",
+    "mypy>=1.0",
+]
+
+[project.urls]
+Homepage = "https://github.com/paulmagos/rustygraph"
+Documentation = "https://docs.rs/rustygraph"
+Repository = "https://github.com/paulmagos/rustygraph"
+"Bug Tracker" = "https://github.com/paulmagos/rustygraph/issues"
+
+[tool.maturin]
+features = ["python-bindings"]
+python-source = "python"
+module-name = "rustygraph._rustygraph"
+

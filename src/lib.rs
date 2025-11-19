@@ -90,39 +90,50 @@
 #![warn(missing_docs)]
 #![warn(rustdoc::broken_intra_doc_links)]
 
-pub mod time_series;
-pub mod visibility_graph;
-pub mod features;
-pub mod algorithms;
-pub mod export;
-pub mod metrics;
-pub mod statistics;
-pub mod import;
-pub mod parallel;
-pub mod batch;
-pub mod community;
-pub mod datasets;
-pub mod lazy;
+// New modular structure
+pub mod core;
+pub mod analysis;
+pub mod io;
+pub mod integrations;
+pub mod performance;
 pub mod advanced;
-pub mod simd;
-pub mod motifs;
-pub mod export_advanced;
+pub mod utils;
 
-// Integration modules (feature-gated)
+// Backward compatibility: re-export modules with old names
+pub use core::time_series;
+pub use core::visibility_graph;
+pub use core::features;
+pub use core::algorithms;
+pub use io::export;
+pub use analysis::metrics;
+pub use analysis::statistics;
+pub use io::import;
+pub use performance::parallel;
+pub use performance::batch;
+pub use analysis::community;
+pub use utils::datasets;
+pub use performance::lazy;
+pub use performance::simd;
+pub use analysis::motifs;
+
+#[cfg(any(feature = "npy-export", feature = "parquet-export", feature = "hdf5-export"))]
+pub use io::export_advanced;
+
+// Integration modules (feature-gated) - backward compatibility
 #[cfg(feature = "petgraph-integration")]
-pub mod petgraph_integration;
+pub use integrations::petgraph as petgraph_integration;
 #[cfg(feature = "ndarray-support")]
-pub mod ndarray_support;
+pub use integrations::ndarray as ndarray_support;
 #[cfg(feature = "python-bindings")]
-pub mod python;
+pub use integrations::python;
 
 // Re-export main types for convenience
-pub use time_series::{TimeSeries, TimeSeriesError};
-pub use visibility_graph::{VisibilityGraph, VisibilityGraphBuilder, GraphError, GraphDirection};
-pub use features::{Feature, FeatureSet, BuiltinFeature};
-pub use features::missing_data::{MissingDataHandler, MissingDataStrategy, ImputationError};
-pub use export::{ExportFormat, ExportOptions};
-pub use statistics::GraphStatistics;
-pub use import::CsvImportOptions;
-pub use community::Communities;
-pub use batch::{BatchProcessor, BatchResults, compare_graphs};
+pub use core::{TimeSeries, TimeSeriesError};
+pub use core::{VisibilityGraph, VisibilityGraphBuilder, GraphError, GraphDirection};
+pub use core::{Feature, FeatureSet, BuiltinFeature};
+pub use core::{MissingDataHandler, MissingDataStrategy, ImputationError};
+pub use io::{ExportFormat, ExportOptions};
+pub use analysis::GraphStatistics;
+pub use io::CsvImportOptions;
+pub use analysis::Communities;
+pub use performance::{BatchProcessor, BatchResults, compare_graphs};

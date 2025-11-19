@@ -48,37 +48,38 @@ fn feature_computation_benchmark(c: &mut Criterion) {
 
     // Benchmark with different numbers of features
     for num_features in [1, 3, 5, 10].iter() {
-        let mut feature_set = FeatureSet::new();
-
-        if *num_features >= 1 {
-            feature_set = feature_set.add_builtin(BuiltinFeature::DeltaForward);
-        }
-        if *num_features >= 3 {
-            feature_set = feature_set
-                .add_builtin(BuiltinFeature::DeltaBackward)
-                .add_builtin(BuiltinFeature::LocalSlope);
-        }
-        if *num_features >= 5 {
-            feature_set = feature_set
-                .add_builtin(BuiltinFeature::LocalMean)
-                .add_builtin(BuiltinFeature::IsLocalMax);
-        }
-        if *num_features >= 10 {
-            feature_set = feature_set
-                .add_builtin(BuiltinFeature::IsLocalMin)
-                .add_builtin(BuiltinFeature::Acceleration)
-                .add_builtin(BuiltinFeature::LocalVariance)
-                .add_builtin(BuiltinFeature::DeltaSymmetric)
-                .add_builtin(BuiltinFeature::ZScore);
-        }
-
         group.bench_with_input(
             BenchmarkId::new("features", num_features),
             num_features,
-            |b, _| {
+            |b, &num_features| {
                 b.iter(|| {
+                    // Create feature set inside iteration (can't clone FeatureSet)
+                    let mut feature_set = FeatureSet::new();
+
+                    if num_features >= 1 {
+                        feature_set = feature_set.add_builtin(BuiltinFeature::DeltaForward);
+                    }
+                    if num_features >= 3 {
+                        feature_set = feature_set
+                            .add_builtin(BuiltinFeature::DeltaBackward)
+                            .add_builtin(BuiltinFeature::LocalSlope);
+                    }
+                    if num_features >= 5 {
+                        feature_set = feature_set
+                            .add_builtin(BuiltinFeature::LocalMean)
+                            .add_builtin(BuiltinFeature::IsLocalMax);
+                    }
+                    if num_features >= 10 {
+                        feature_set = feature_set
+                            .add_builtin(BuiltinFeature::IsLocalMin)
+                            .add_builtin(BuiltinFeature::Acceleration)
+                            .add_builtin(BuiltinFeature::LocalVariance)
+                            .add_builtin(BuiltinFeature::DeltaSymmetric)
+                            .add_builtin(BuiltinFeature::ZScore);
+                    }
+
                     let graph = VisibilityGraph::from_series(&series)
-                        .with_features(feature_set.clone())
+                        .with_features(feature_set)
                         .natural_visibility()
                         .unwrap();
                     black_box(graph);
@@ -95,7 +96,9 @@ fn missing_data_benchmark(c: &mut Criterion) {
     let size = 100;
     let data: Vec<Option<f64>> = (0..size)
         .map(|i| {
-            if i % 5 == 0 {
+            // Don't put missing values at boundaries (index 0 or last)
+            // as linear interpolation can't handle those
+            if i % 5 == 0 && i != 0 && i != size - 1 {
                 None
             } else {
                 Some((i as f64 * 0.1).sin())

@@ -24,7 +24,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Display edges
     println!("\nEdges:");
-    for ((src, dst), _weight) in natural_graph.edges() {
+    for (src, dst) in natural_graph.edges().keys() {
         println!("  {} -> {}", src, dst);
     }
 

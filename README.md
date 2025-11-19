@@ -1,9 +1,12 @@
-# RustyGraph
+# RustyGraph 🚀
 
-A high-performance Rust library for visibility graph computation from time series data with extensible node feature computation.
+[![Crates.io](https://img.shields.io/crates/v/rustygraph)](https://crates.io/crates/rustygraph)
+[![Documentation](https://docs.rs/rustygraph/badge.svg)](https://docs.rs/rustygraph)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-[![Documentation](https://img.shields.io/badge/docs-rustdoc-blue)](https://docs.rs/rustygraph)
-[![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+**A blazingly fast, cross-platform visibility graph library for time series analysis.**
+
+RustyGraph is a high-performance Rust library for computing visibility graphs from time series data, featuring automatic multi-core parallelization, SIMD acceleration on x86_64 (AVX2) and ARM64 (NEON), and GPU-ready architecture for Apple Silicon (Metal) and NVIDIA (CUDA).
 
 ## 📚 Documentation Index
 
@@ -29,6 +32,8 @@ A high-performance Rust library for visibility graph computation from time serie
 
 ### Optional Features (Cargo Features)
 - **Parallel Processing** (`parallel`): Multi-threaded feature computation with rayon (2-4x speedup)
+- **SIMD Acceleration** (`simd`): AVX2 (x86_64) and NEON (ARM64) optimizations (5-8x speedup)
+- **GPU Acceleration** (`metal`): Apple Silicon GPU support via Metal (best for graphs > 20k nodes)
 - **CSV Import** (`csv-import`): Load time series from CSV files
 
 Enable with:
@@ -475,10 +480,14 @@ communities = graph.detect_communities()
 These features could be added in future versions but are **not required** for production use:
 
 #### Performance Optimizations
-- ✅ **SIMD optimizations** for numerical operations (IMPLEMENTED - AVX2 support)
+- ✅ **SIMD optimizations** for numerical operations (IMPLEMENTED - AVX2/NEON support, 5-8x speedup)
+- ✅ **Parallel processing** for multi-core systems (IMPLEMENTED - rayon, 2-4x speedup)
 - ✅ **Lazy evaluation** for expensive features (IMPLEMENTED)
 - ✅ **Caching** for intermediate computations (IMPLEMENTED)
-- [ ] **GPU acceleration** for massive graphs
+- ✅ **GPU acceleration** for massive graphs (IMPLEMENTED - Metal on Apple Silicon)
+  - ⚠️  Note: CPU is actually faster for graphs < 10,000 nodes due to overhead
+  - 🎯 GPU useful for very large graphs (> 20,000 nodes) or batch processing
+  - 📊 See `GPU_FAIR_COMPARISON_RESULTS.md` for detailed analysis
 
 #### Advanced Features
 - ✅ **Frequency domain features** (FFT coefficients) (IMPLEMENTED - advanced-features flag)

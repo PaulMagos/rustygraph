@@ -8,7 +8,6 @@
 
 use rustygraph::*;
 use rustygraph::simd::SimdOps;
-use rustygraph::motifs::MotifCounts;
 use std::time::Instant;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {

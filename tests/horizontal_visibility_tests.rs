@@ -22,7 +22,7 @@ fn test_weighted_edges() {
 
     assert!(edges.len() >= 2);
     // Check that weights are computed correctly
-    for (i, j, weight) in edges {
+    for ((i, j), weight) in edges {
         assert_eq!(weight, (j - i) as f64);
         println!("Edge ({}, {}) has weight {}", i, j, weight);
     }
@@ -37,7 +37,7 @@ fn test_value_based_weights() {
         vi + vj
     });
 
-    for (i, j, weight) in &edges {
+    for ((i, j), weight) in &edges {
         let vi: f64 = series.values[*i].unwrap().into();
         let vj: f64 = series.values[*j].unwrap().into();
         let expected = vi + vj;
@@ -100,7 +100,7 @@ fn test_value_difference_weights() {
         (vj - vi).abs()
     });
 
-    for (i, j, weight) in &edges {
+    for ((i, j), weight) in &edges {
         let vi: f64 = series.values[*i].unwrap().into();
         let vj: f64 = series.values[*j].unwrap().into();
         let expected = (vj - vi).abs();
