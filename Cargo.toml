@@ -76,6 +76,21 @@ name = "advanced_optimization"
 path = "examples/advanced_optimization.rs"
 required-features = ["advanced-features"]
 
+# Testing examples
+[[example]]
+name = "ground_truth"
+path = "examples/testing/ground_truth.rs"
+
+[[example]]
+name = "test_parallel_simd"
+path = "examples/testing/test_parallel_simd.rs"
+required-features = ["parallel", "simd"]
+
+# Benchmark examples
+[[example]]
+name = "rust_benchmark"
+path = "examples/benchmarks/rust_benchmark.rs"
+
 # Metal GPU support (Apple Silicon)
 [target.'cfg(target_os = "macos")'.dependencies]
 metal = "0.32.0"

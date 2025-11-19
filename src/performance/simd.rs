@@ -200,13 +200,14 @@ impl SimdOps {
     unsafe fn add_f64_avx2(a: &[f64], b: &[f64], result: &mut [f64]) {
         let chunks_a = a.chunks_exact(4);
         let chunks_b = b.chunks_exact(4);
-        let chunks_r = result.chunks_exact_mut(4);
-        
+
         let remainder_a = chunks_a.remainder();
         let remainder_b = chunks_b.remainder();
-        let remainder_r = chunks_r.into_remainder();
-        
-        for ((chunk_a, chunk_b), chunk_r) in chunks_a.zip(chunks_b).zip(result.chunks_exact_mut(4)) {
+        let remainder_len = remainder_a.len();
+
+        let mut chunks_r = result.chunks_exact_mut(4);
+
+        for ((chunk_a, chunk_b), chunk_r) in chunks_a.zip(chunks_b).zip(&mut chunks_r) {
             let va = _mm256_loadu_pd(chunk_a.as_ptr());
             let vb = _mm256_loadu_pd(chunk_b.as_ptr());
             let sum = _mm256_add_pd(va, vb);
@@ -214,7 +215,8 @@ impl SimdOps {
         }
         
         // Handle remainder
-        for i in 0..remainder_a.len() {
+        let remainder_r = chunks_r.into_remainder();
+        for i in 0..remainder_len {
             remainder_r[i] = remainder_a[i] + remainder_b[i];
         }
     }
