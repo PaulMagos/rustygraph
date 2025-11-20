@@ -3,8 +3,8 @@ requires = ["maturin>=1.0,<2.0"]
 build-backend = "maturin"
 
 [project]
-name = "rustygraph"
-version = "0.4.0"
+name = "pyrustygraph"
+version = "0.4.1"
 description = "High-performance visibility graph computation for time series analysis"
 readme = "README.md"
 requires-python = ">=3.9"
@@ -58,5 +58,5 @@ Repository = "https://github.com/paulmagos/rustygraph"
 [tool.maturin]
 features = ["python-bindings"]
 python-source = "python"
-module-name = "rustygraph._rustygraph"
+module-name = "pyrustygraph._rustygraph"
 
