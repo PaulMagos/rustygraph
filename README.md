@@ -634,6 +634,19 @@ The library is **ready for production use** in:
 
 ## Python Installation
 
+### Install from PyPI (Recommended)
+
+Pre-built wheels are automatically published for Linux, macOS, and Windows:
+
+```bash
+pip install rustygraph
+```
+
+Supports Python 3.9+ on:
+- **Linux**: x86_64, aarch64
+- **macOS**: Intel (x86_64), Apple Silicon (aarch64)
+- **Windows**: x64
+
 ### Install from Source
 
 ```bash
@@ -647,6 +660,8 @@ maturin develop --release --features python-bindings
 # Verify installation
 python -c "import rustygraph as rg; print(rg.__version__)"
 ```
+
+> **Note for Maintainers**: Python packages are automatically built and published to PyPI via GitHub Actions. See [`.github/workflows/README.md`](.github/workflows/README.md) for details.
 
 ### Quick Python Example
 
