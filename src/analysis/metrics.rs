@@ -6,7 +6,95 @@
 use crate::core::VisibilityGraph;
 use std::collections::{HashMap, HashSet, VecDeque};
 
+/// Helper struct to store BFS results for shortest path computation.
+struct ShortestPathsInfo {
+    distances: Vec<usize>,
+    num_paths: Vec<usize>,
+}
+
 impl<T> VisibilityGraph<T> {
+    /// Helper: Computes shortest paths from a source node using BFS.
+    /// Returns distances and number of shortest paths to each node.
+    fn compute_shortest_paths_from_source(&self, source: usize) -> ShortestPathsInfo {
+        let mut distances = vec![usize::MAX; self.node_count];
+        let mut num_paths = vec![0usize; self.node_count];
+        let mut queue = VecDeque::new();
+
+        distances[source] = 0;
+        num_paths[source] = 1;
+        queue.push_back(source);
+
+        while let Some(v) = queue.pop_front() {
+            for &neighbor in &self.neighbor_indices(v) {
+                if distances[neighbor] == usize::MAX {
+                    distances[neighbor] = distances[v] + 1;
+                    num_paths[neighbor] = num_paths[v];
+                    queue.push_back(neighbor);
+                } else if distances[neighbor] == distances[v] + 1 {
+                    num_paths[neighbor] += num_paths[v];
+                }
+            }
+        }
+
+        ShortestPathsInfo {
+            distances,
+            num_paths,
+        }
+    }
+
+    /// Helper: Checks if a node lies on a shortest path from source to target.
+    fn is_on_shortest_path(
+        &self,
+        node: usize,
+        source: usize,
+        target: usize,
+        info: &ShortestPathsInfo,
+    ) -> bool {
+        if info.distances[target] == usize::MAX || info.distances[node] == usize::MAX {
+            return false;
+        }
+
+        let dist_to_target = self.shortest_path_length(node, target).unwrap_or(usize::MAX);
+        info.distances[source] + info.distances[node] + dist_to_target == info.distances[target]
+    }
+
+    /// Helper: Counts the contribution to betweenness centrality for a specific source node.
+    fn count_betweenness_from_source(&self, node: usize, source: usize) -> f64 {
+        let info = self.compute_shortest_paths_from_source(source);
+        let mut contribution = 0.0;
+
+        for target in 0..self.node_count {
+            if target == source || target == node {
+                continue;
+            }
+
+            if self.is_on_shortest_path(node, source, target, &info) && info.num_paths[target] > 0 {
+                contribution += (info.num_paths[node] as f64) / (info.num_paths[target] as f64);
+            }
+        }
+
+        contribution
+    }
+
+    /// Helper: Checks if an edge exists between two nodes (in either direction).
+    #[inline]
+    fn has_edge_between(&self, n1: usize, n2: usize) -> bool {
+        self.edges.contains_key(&(n1, n2)) || self.edges.contains_key(&(n2, n1))
+    }
+
+    /// Helper: Counts edges between neighbors for clustering coefficient.
+    fn count_neighbor_edges(&self, neighbors: &[usize]) -> usize {
+        let mut count = 0;
+        for i in 0..neighbors.len() {
+            for j in (i + 1)..neighbors.len() {
+                if self.has_edge_between(neighbors[i], neighbors[j]) {
+                    count += 1;
+                }
+            }
+        }
+        count
+    }
+
     /// Computes the clustering coefficient for a specific node.
     ///
     /// The clustering coefficient measures the degree to which nodes in a graph
@@ -40,39 +128,16 @@ impl<T> VisibilityGraph<T> {
             return None;
         }
 
-        // Get neighbors of the node
-        let neighbors: Vec<usize> = self.edges
-            .keys()
-            .filter_map(|&(src, dst)| {
-                if src == node {
-                    Some(dst)
-                } else if dst == node {
-                    Some(src)
-                } else {
-                    None
-                }
-            })
-            .collect();
-
+        let neighbors = self.neighbor_indices(node);
         let k = neighbors.len();
+
         if k < 2 {
             return Some(0.0);
         }
 
-        // Count edges between neighbors
-        let mut actual_edges = 0;
-        for i in 0..neighbors.len() {
-            for j in (i + 1)..neighbors.len() {
-                let n1 = neighbors[i];
-                let n2 = neighbors[j];
-                if self.edges.contains_key(&(n1, n2)) || self.edges.contains_key(&(n2, n1)) {
-                    actual_edges += 1;
-                }
-            }
-        }
-
-        // Maximum possible edges between k neighbors is k*(k-1)/2
+        let actual_edges = self.count_neighbor_edges(&neighbors);
         let max_edges = k * (k - 1) / 2;
+
         Some(actual_edges as f64 / max_edges as f64)
     }
 
@@ -154,15 +219,7 @@ impl<T> VisibilityGraph<T> {
 
         while let Some((node, dist)) = queue.pop_front() {
             // Get neighbors
-            for &(src, dst) in self.edges.keys() {
-                let neighbor = if src == node {
-                    dst
-                } else if dst == node {
-                    src
-                } else {
-                    continue;
-                };
-
+            for &neighbor in &self.neighbor_indices(node) {
                 if neighbor == target {
                     return Some(dist + 1);
                 }
@@ -321,15 +378,7 @@ impl<T> VisibilityGraph<T> {
         visited.insert(0);
 
         while let Some(node) = queue.pop_front() {
-            for &(src, dst) in self.edges.keys() {
-                let neighbor = if src == node {
-                    dst
-                } else if dst == node {
-                    src
-                } else {
-                    continue;
-                };
-
+            for &neighbor in &self.neighbor_indices(node) {
                 if !visited.contains(&neighbor) {
                     visited.insert(neighbor);
                     queue.push_back(neighbor);
@@ -367,13 +416,13 @@ impl<T> VisibilityGraph<T> {
         if n < 2 {
             return 0.0;
         }
-        
+
         let max_edges = n * (n - 1) / 2;
         let actual_edges = self.edges.len();
-        
+
         actual_edges as f64 / max_edges as f64
     }
-    
+
     /// Computes betweenness centrality for a specific node.
     ///
     /// Betweenness centrality measures how often a node appears on shortest
@@ -406,73 +455,22 @@ impl<T> VisibilityGraph<T> {
         if node >= self.node_count {
             return None;
         }
-        
-        let mut centrality = 0.0;
-        
-        // For each pair of nodes (s, t)
-        for s in 0..self.node_count {
-            if s == node {
-                continue;
-            }
-            
-            // BFS from s to find all shortest paths
-            let mut distances = vec![usize::MAX; self.node_count];
-            let mut num_paths = vec![0usize; self.node_count];
-            let mut queue = VecDeque::new();
-            
-            distances[s] = 0;
-            num_paths[s] = 1;
-            queue.push_back(s);
-            
-            while let Some(v) = queue.pop_front() {
-                // Get neighbors of v
-                for &(src, dst) in self.edges.keys() {
-                    let neighbor = if src == v {
-                        dst
-                    } else if dst == v {
-                        src
-                    } else {
-                        continue;
-                    };
-                    
-                    if distances[neighbor] == usize::MAX {
-                        distances[neighbor] = distances[v] + 1;
-                        num_paths[neighbor] = num_paths[v];
-                        queue.push_back(neighbor);
-                    } else if distances[neighbor] == distances[v] + 1 {
-                        num_paths[neighbor] += num_paths[v];
-                    }
-                }
-            }
-            
-            // For each target t, check if node is on shortest path from s to t
-            for t in 0..self.node_count {
-                if t == s || t == node {
-                    continue;
-                }
-                
-                if distances[t] != usize::MAX && distances[node] != usize::MAX {
-                    // Check if node is on a shortest path from s to t
-                    if distances[s] + distances[node] + 
-                       self.shortest_path_length(node, t).unwrap_or(usize::MAX) == distances[t] {
-                        // Count paths through node
-                        if num_paths[t] > 0 {
-                            centrality += (num_paths[node] as f64) / (num_paths[t] as f64);
-                        }
-                    }
-                }
-            }
-        }
-        
+
+        let centrality = (0..self.node_count)
+            .filter(|&s| s != node)
+            .map(|s| self.count_betweenness_from_source(node, s))
+            .sum::<f64>();
+
         // Normalize by the number of pairs
-        let n = self.node_count;
-        if n > 2 {
-            centrality /= ((n - 1) * (n - 2)) as f64;
-        }
-        
-        Some(centrality)
+        let normalized = if self.node_count > 2 {
+            centrality / ((self.node_count - 1) * (self.node_count - 2)) as f64
+        } else {
+            centrality
+        };
+
+        Some(normalized)
     }
-    
+
     /// Computes betweenness centrality for all nodes.
     ///
     /// ⚠️ **Performance Warning:** This method has **O(n×m)** complexity using Brandes' algorithm,
@@ -504,4 +502,3 @@ impl<T> VisibilityGraph<T> {
             .collect()
     }
 }
-

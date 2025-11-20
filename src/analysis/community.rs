@@ -44,63 +44,81 @@ impl<T> VisibilityGraph<T> {
     /// println!("Modularity: {:.4}", communities.modularity);
     /// ```
     pub fn detect_communities(&self) -> Communities {
-        // Start with each node in its own community
-        let mut node_communities: Vec<usize> = (0..self.node_count).collect();
+        let mut node_communities = self.initialize_communities();
         let mut improved = true;
         let mut iteration = 0;
-        let max_iterations = 100;
+        const MAX_ITERATIONS: usize = 100;
 
-        // Greedy optimization
-        while improved && iteration < max_iterations {
-            improved = false;
+        // Greedy optimization loop
+        while improved && iteration < MAX_ITERATIONS {
+            improved = self.optimize_communities_one_pass(&mut node_communities);
             iteration += 1;
+        }
 
-            for node in 0..self.node_count {
-                let current_community = node_communities[node];
-                let mut best_community = current_community;
-                let mut best_gain = 0.0;
+        // Renumber communities to be contiguous and compute final result
+        self.finalize_communities(node_communities)
+    }
 
-                // Try moving node to each neighbor's community
-                let neighbors = self.get_neighbors(node);
-                let mut candidate_communities = HashSet::new();
+    /// Initialize each node in its own community
+    fn initialize_communities(&self) -> Vec<usize> {
+        (0..self.node_count).collect()
+    }
 
-                for &neighbor in &neighbors {
-                    candidate_communities.insert(node_communities[neighbor]);
-                }
+    /// Perform one pass of community optimization
+    fn optimize_communities_one_pass(&self, node_communities: &mut [usize]) -> bool {
+        let mut improved = false;
 
-                for &candidate in &candidate_communities {
-                    if candidate == current_community {
-                        continue;
-                    }
-
-                    // Calculate modularity gain
-                    let gain = self.modularity_gain(
-                        node,
-                        current_community,
-                        candidate,
-                        &node_communities
-                    );
-
-                    if gain > best_gain {
-                        best_gain = gain;
-                        best_community = candidate;
-                    }
-                }
-
-                if best_community != current_community {
-                    node_communities[node] = best_community;
-                    improved = true;
-                }
+        for node in 0..self.node_count {
+            if let Some(best_community) = self.find_best_community_for_node(node, node_communities) {
+                node_communities[node] = best_community;
+                improved = true;
             }
         }
 
-        // Renumber communities to be contiguous
-        let unique_communities: HashSet<_> = node_communities.iter().copied().collect();
-        let mut community_map: HashMap<usize, usize> = HashMap::new();
-        for (new_id, &old_id) in unique_communities.iter().enumerate() {
-            community_map.insert(old_id, new_id);
+        improved
+    }
+
+    /// Find the best community for a node by trying all neighbor communities
+    fn find_best_community_for_node(&self, node: usize, communities: &[usize]) -> Option<usize> {
+        let current_community = communities[node];
+        let neighbors = self.get_neighbors(node);
+        let candidate_communities = self.get_candidate_communities(&neighbors, communities);
+
+        let mut best_community = current_community;
+        let mut best_gain = 0.0;
+
+        for &candidate in &candidate_communities {
+            if candidate == current_community {
+                continue;
+            }
+
+            let gain = self.modularity_gain(node, current_community, candidate, communities);
+            if gain > best_gain {
+                best_gain = gain;
+                best_community = candidate;
+            }
         }
 
+        if best_community != current_community {
+            Some(best_community)
+        } else {
+            None
+        }
+    }
+
+    /// Get unique communities from neighbors
+    fn get_candidate_communities(&self, neighbors: &[usize], communities: &[usize]) -> HashSet<usize> {
+        neighbors.iter()
+            .map(|&neighbor| communities[neighbor])
+            .collect()
+    }
+
+    /// Renumber communities to be contiguous and compute final result
+    fn finalize_communities(&self, mut node_communities: Vec<usize>) -> Communities {
+        let unique_communities: HashSet<_> = node_communities.iter().copied().collect();
+        let community_map = self.create_community_renumbering_map(&unique_communities);
+
+        // Apply renumbering
         for comm in &mut node_communities {
             *comm = community_map[comm];
         }
@@ -113,6 +131,15 @@ impl<T> VisibilityGraph<T> {
             num_communities,
             modularity,
         }
+    }
+
+    /// Create mapping from old community IDs to new contiguous IDs
+    fn create_community_renumbering_map(&self, unique_communities: &HashSet<usize>) -> HashMap<usize, usize> {
+        let mut community_map = HashMap::new();
+        for (new_id, &old_id) in unique_communities.iter().enumerate() {
+            community_map.insert(old_id, new_id);
+        }
+        community_map
     }
 
     /// Helper: Get neighbors of a node
@@ -165,38 +192,51 @@ impl<T> VisibilityGraph<T> {
             return 0.0;
         }
 
-        let mut modularity = 0.0;
+        (0..num_comms)
+            .map(|c| self.compute_modularity_for_community(c, communities, m))
+            .sum()
+    }
 
-        for c in 0..num_comms {
-            let nodes_in_comm: Vec<usize> = communities.iter()
-                .enumerate()
-                .filter(|(_, &comm)| comm == c)
-                .map(|(node, _)| node)
-                .collect();
-
-            if nodes_in_comm.is_empty() {
-                continue;
-            }
-
-            // Count internal edges
-            let mut internal_edges = 0.0;
-            for &node1 in &nodes_in_comm {
-                for &node2 in &nodes_in_comm {
-                    if self.edges.contains_key(&(node1, node2)) {
-                        internal_edges += 1.0;
-                    }
-                }
-            }
-
-            // Sum of degrees
-            let degree_sum: f64 = nodes_in_comm.iter()
-                .map(|&n| self.get_neighbors(n).len() as f64)
-                .sum();
-
-            modularity += internal_edges / (2.0 * m) - (degree_sum / (2.0 * m)).powi(2);
+    /// Compute modularity contribution for a single community
+    fn compute_modularity_for_community(&self, community_id: usize, communities: &[usize], total_edges: f64) -> f64 {
+        let nodes_in_comm = self.get_nodes_in_community(community_id, communities);
+        if nodes_in_comm.is_empty() {
+            return 0.0;
         }
 
-        modularity
+        let internal_edges = self.count_internal_edges(&nodes_in_comm);
+        let degree_sum = self.sum_degrees(&nodes_in_comm);
+
+        internal_edges / (2.0 * total_edges) - (degree_sum / (2.0 * total_edges)).powi(2)
+    }
+
+    /// Get all nodes belonging to a specific community
+    fn get_nodes_in_community(&self, community_id: usize, communities: &[usize]) -> Vec<usize> {
+        communities.iter()
+            .enumerate()
+            .filter(|(_, &comm)| comm == community_id)
+            .map(|(node, _)| node)
+            .collect()
+    }
+
+    /// Count edges within a community
+    fn count_internal_edges(&self, nodes: &[usize]) -> f64 {
+        let mut count = 0.0;
+        for &node1 in nodes {
+            for &node2 in nodes {
+                if self.edges.contains_key(&(node1, node2)) {
+                    count += 1.0;
+                }
+            }
+        }
+        count
+    }
+
+    /// Sum degrees of nodes in a community
+    fn sum_degrees(&self, nodes: &[usize]) -> f64 {
+        nodes.iter()
+            .map(|&node| self.get_neighbors(node).len() as f64)
+            .sum()
     }
 
     /// Finds connected components in the graph.
@@ -225,29 +265,37 @@ impl<T> VisibilityGraph<T> {
         let mut components = vec![usize::MAX; self.node_count];
         let mut component_id = 0;
 
-        for start in 0..self.node_count {
-            if components[start] != usize::MAX {
-                continue; // Already visited
+        for start_node in 0..self.node_count {
+            if self.is_node_visited(start_node, &components) {
+                continue;
             }
 
-            // BFS to find all nodes in this component
-            let mut queue = VecDeque::new();
-            queue.push_back(start);
-            components[start] = component_id;
-
-            while let Some(node) = queue.pop_front() {
-                for neighbor in self.get_neighbors(node) {
-                    if components[neighbor] == usize::MAX {
-                        components[neighbor] = component_id;
-                        queue.push_back(neighbor);
-                    }
-                }
-            }
-
+            self.explore_component(start_node, component_id, &mut components);
             component_id += 1;
         }
 
         components
+    }
+
+    /// Check if a node has been visited (assigned to a component)
+    fn is_node_visited(&self, node: usize, components: &[usize]) -> bool {
+        components[node] != usize::MAX
+    }
+
+    /// Explore a connected component using BFS
+    fn explore_component(&self, start_node: usize, component_id: usize, components: &mut [usize]) {
+        let mut queue = VecDeque::new();
+        queue.push_back(start_node);
+        components[start_node] = component_id;
+
+        while let Some(current_node) = queue.pop_front() {
+            for neighbor in self.get_neighbors(current_node) {
+                if !self.is_node_visited(neighbor, components) {
+                    components[neighbor] = component_id;
+                    queue.push_back(neighbor);
+                }
+            }
+        }
     }
 }
 
@@ -271,4 +319,3 @@ impl Communities {
         sizes
     }
 }
-

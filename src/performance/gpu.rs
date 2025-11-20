@@ -153,7 +153,7 @@ impl GpuCapabilities {
         // Detect Metal on Apple platforms
         #[cfg(target_os = "macos")]
         {
-            return Self::detect_metal();
+            Self::detect_metal()
         }
 
         // Detect CUDA on other platforms
@@ -787,4 +787,3 @@ mod tests {
         // Result depends on actual GPU availability
     }
 }
-

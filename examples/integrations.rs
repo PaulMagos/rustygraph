@@ -58,8 +58,36 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     #[cfg(not(feature = "python-bindings"))]
     println!("✗ Not available. Build with: maturin develop --features python-bindings");
 
-    // 4. Summary
-    println!("\n4. SUMMARY");
+    // 4. Machine Learning Data Preparation
+    println!("\n4. MACHINE LEARNING DATA PREPARATION");
+    {
+        // Create windowed time series for ML
+        let windows = WindowedTimeSeries::from_series(&series, 5, 1)?;
+        println!("✓ Created {} windows of size {} from time series", windows.len(), windows.window_size);
+
+        // Split data for training
+        let split = split_windowed_data(windows, SplitStrategy::TimeBased {
+            train_frac: 0.7,
+            val_frac: 0.2,
+        })?;
+        println!("  Data split: {} train, {} val, {} test windows",
+            split.train.len(),
+            split.val.as_ref().map(|v| v.len()).unwrap_or(0),
+            split.test.len());
+    }
+
+    // 5. Burn Integration (Rust ML)
+    println!("\n5. BURN INTEGRATION (Rust ML)");
+    #[cfg(feature = "burn-integration")]
+    {
+        println!("✓ Available. Build with: --features burn-integration");
+        println!("  Provides Burn-compatible datasets and data loaders for time series ML");
+    }
+    #[cfg(not(feature = "burn-integration"))]
+    println!("✗ Not available. Enable with: --features burn-integration");
+
+    // 6. Summary
+    println!("\n6. SUMMARY");
 
     let mut available: Vec<&str> = Vec::new();
     #[cfg(feature = "petgraph-integration")]
@@ -68,6 +96,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     available.push("ndarray");
     #[cfg(feature = "python-bindings")]
     available.push("Python");
+    #[cfg(feature = "burn-integration")]
+    available.push("Burn");
+
+    available.push("ML DataLoader"); // Always available now
 
     println!("✓ Available integrations: {}",
         if available.is_empty() {
@@ -78,4 +110,3 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     Ok(())
 }
-

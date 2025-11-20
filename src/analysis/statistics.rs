@@ -325,7 +325,7 @@ impl<T> VisibilityGraph<T> {
         let mut sum_jk = 0.0;
         let mut sum_j_plus_k = 0.0;
         let mut sum_j_sq_plus_k_sq = 0.0;
-        for ((i, j), _) in &self.edges {
+        for (i, j) in self.edges.keys() {
             let deg_i = degrees[*i] as f64;
             let deg_j = degrees[*j] as f64;
             sum_jk += deg_i * deg_j;
@@ -393,55 +393,122 @@ impl<T> VisibilityGraph<T> {
     pub fn betweenness_centrality_batch(&self) -> Vec<f64> {
         let n = self.node_count;
         let mut betweenness = vec![0.0; n];
+
         for source in 0..n {
-            let mut stack = Vec::new();
-            let mut paths = vec![Vec::new(); n];
-            let mut sigma = vec![0.0; n];
-            sigma[source] = 1.0;
-            let mut dist = vec![usize::MAX; n];
-            dist[source] = 0;
-            let mut queue = std::collections::VecDeque::new();
-            queue.push_back(source);
-            // BFS
-            while let Some(v) = queue.pop_front() {
-                stack.push(v);
-                for &w in &self.neighbor_indices(v) {
-                    if dist[w] == usize::MAX {
-                        dist[w] = dist[v] + 1;
-                        queue.push_back(w);
-                    }
-                    if dist[w] == dist[v] + 1 {
-                        sigma[w] += sigma[v];
-                        paths[w].push(v);
-                    }
+            self.compute_betweenness_from_source(source, &mut betweenness);
+        }
+
+        self.normalize_betweenness(betweenness, n)
+    }
+
+    /// Compute betweenness centrality contribution from a single source node
+    fn compute_betweenness_from_source(&self, source: usize, betweenness: &mut [f64]) {
+        let n = self.node_count;
+        let mut stack = Vec::new();
+        let mut paths = vec![Vec::new(); n];
+        let mut sigma = vec![0.0; n];
+        let mut dist = vec![usize::MAX; n];
+
+        sigma[source] = 1.0;
+        dist[source] = 0;
+
+        self.bfs_from_source(source, &mut stack, &mut paths, &mut sigma, &mut dist);
+        self.accumulate_betweenness(&stack, &paths, &sigma, betweenness);
+    }
+
+    /// Perform BFS from source to compute paths and distances
+    fn bfs_from_source(
+        &self,
+        source: usize,
+        stack: &mut Vec<usize>,
+        paths: &mut [Vec<usize>],
+        sigma: &mut [f64],
+        dist: &mut [usize],
+    ) {
+        let mut queue = std::collections::VecDeque::new();
+        queue.push_back(source);
+
+        while let Some(v) = queue.pop_front() {
+            stack.push(v);
+            for &w in &self.neighbor_indices(v) {
+                if dist[w] == usize::MAX {
+                    self.process_unvisited_neighbor(v, w, dist, &mut queue);
                 }
-            }
-            // Accumulation
-            let mut delta = vec![0.0; n];
-            while let Some(w) = stack.pop() {
-                for &v in &paths[w] {
-                    delta[v] += (sigma[v] / sigma[w]) * (1.0 + delta[w]);
-                }
-                if w != source {
-                    betweenness[w] += delta[w];
+                if dist[w] == dist[v] + 1 {
+                    self.process_neighbor_on_shortest_path(v, w, sigma, paths);
                 }
             }
         }
-        // Normalize
+    }
+
+    /// Process an unvisited neighbor during BFS
+    fn process_unvisited_neighbor(
+        &self,
+        v: usize,
+        w: usize,
+        dist: &mut [usize],
+        queue: &mut std::collections::VecDeque<usize>,
+    ) {
+        dist[w] = dist[v] + 1;
+        queue.push_back(w);
+    }
+
+    /// Process a neighbor that lies on a shortest path
+    fn process_neighbor_on_shortest_path(
+        &self,
+        v: usize,
+        w: usize,
+        sigma: &mut [f64],
+        paths: &mut [Vec<usize>],
+    ) {
+        sigma[w] += sigma[v];
+        paths[w].push(v);
+    }
+
+    /// Accumulate betweenness centrality using dependency accumulation
+    fn accumulate_betweenness(
+        &self,
+        stack: &[usize],
+        paths: &[Vec<usize>],
+        sigma: &[f64],
+        betweenness: &mut [f64],
+    ) {
+        let n = self.node_count;
+        let mut delta = vec![0.0; n];
+        let mut temp_stack = stack.to_vec();
+
+        while let Some(w) = temp_stack.pop() {
+            for &v in &paths[w] {
+                delta[v] += (sigma[v] / sigma[w]) * (1.0 + delta[w]);
+            }
+            // Don't add contribution for source node
+            if !temp_stack.is_empty() || w != stack[0] {
+                betweenness[w] += delta[w];
+            }
+        }
+    }
+
+    /// Normalize betweenness centrality values
+    fn normalize_betweenness(&self, mut betweenness: Vec<f64>, n: usize) -> Vec<f64> {
         let normalizer = if n > 2 {
             ((n - 1) * (n - 2)) as f64
         } else {
             1.0
         };
-        betweenness.iter().map(|&b| b / normalizer).collect()
+
+        for b in &mut betweenness {
+            *b /= normalizer;
+        }
+        betweenness
     }
+
     /// Computes closeness centrality for all nodes.
-    /// 
+    ///
     /// Measures the average distance from a node to all other nodes.
     pub fn closeness_centrality(&self) -> Vec<f64> {
         let n = self.node_count;
         let mut closeness = vec![0.0; n];
-        for i in 0..n {
+        for (i, closeness_val) in closeness.iter_mut().enumerate().take(n) {
             let distances = self.shortest_paths_from(i);
             let reachable: Vec<usize> = distances.iter()
                 .filter(|&&d| d > 0 && d < usize::MAX)
@@ -450,7 +517,7 @@ impl<T> VisibilityGraph<T> {
             if !reachable.is_empty() {
                 let sum_dist: usize = reachable.iter().sum();
                 let num_reachable = reachable.len() as f64;
-                closeness[i] = num_reachable / sum_dist as f64;
+                *closeness_val = num_reachable / sum_dist as f64;
             }
         }
         closeness

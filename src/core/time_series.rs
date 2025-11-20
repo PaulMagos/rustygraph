@@ -231,6 +231,182 @@ impl<T> TimeSeries<T> {
     }
 }
 
+/// Windowed time series data for machine learning.
+///
+/// Represents a collection of time series windows extracted from one or more
+/// time series, suitable for ML training and inference.
+///
+/// # Examples
+///
+/// ```rust
+/// use rustygraph::{TimeSeries, WindowedTimeSeries};
+///
+/// let series = TimeSeries::from_raw(vec![1.0, 2.0, 3.0, 4.0, 5.0]).unwrap();
+/// let windows = WindowedTimeSeries::from_series(&series, 3, 1).unwrap();
+/// // Creates windows: [1,2,3], [2,3,4], [3,4,5]
+/// ```
+#[derive(Debug, Clone)]
+pub struct WindowedTimeSeries<T> {
+    /// Window data: Vec of windows, each window is [feature][timestep]
+    pub windows: Vec<Vec<Vec<T>>>,
+    /// Optional labels/targets for supervised learning
+    pub labels: Option<Vec<T>>,
+    /// Original series indices for traceability
+    pub series_indices: Vec<usize>,
+    /// Window start positions in original series
+    pub window_starts: Vec<usize>,
+    /// Window size (timesteps per window)
+    pub window_size: usize,
+    /// Number of features per window
+    pub num_features: usize,
+}
+
+impl<T> WindowedTimeSeries<T> {
+    /// Creates windows from a single time series using sliding window approach.
+    ///
+    /// # Arguments
+    ///
+    /// - `series`: Source time series
+    /// - `window_size`: Number of timesteps per window
+    /// - `stride`: Step size between windows (1 for sliding, window_size for non-overlapping)
+    ///
+    /// # Returns
+    ///
+    /// WindowedTimeSeries with extracted windows
+    ///
+    /// # Errors
+    ///
+    /// Returns error if series is too short for requested windows
+    pub fn from_series(series: &TimeSeries<T>, window_size: usize, stride: usize)
+        -> Result<Self, TimeSeriesError>
+    where
+        T: Copy + Default,
+    {
+        if series.len() < window_size {
+            return Err(TimeSeriesError::EmptyData);
+        }
+
+        let num_windows = ((series.len() - window_size) / stride) + 1;
+        let mut windows = Vec::with_capacity(num_windows);
+        let mut series_indices = Vec::with_capacity(num_windows);
+        let mut window_starts = Vec::with_capacity(num_windows);
+
+        for i in 0..num_windows {
+            let start_idx = i * stride;
+            series_indices.push(0); // Single series
+            window_starts.push(start_idx);
+
+            // Extract window data (single feature)
+            let mut window = vec![vec![]; 1]; // 1 feature
+            window[0] = (start_idx..start_idx + window_size)
+                .filter_map(|idx| series.values[idx])
+                .collect();
+
+            // Pad with zeros if window has missing values
+            while window[0].len() < window_size {
+                window[0].push(T::default());
+            }
+
+            windows.push(window);
+        }
+
+        Ok(WindowedTimeSeries {
+            windows,
+            labels: None,
+            series_indices,
+            window_starts,
+            window_size,
+            num_features: 1,
+        })
+    }
+
+    /// Creates windows from multiple time series.
+    ///
+    /// # Arguments
+    ///
+    /// - `series_vec`: Vector of time series
+    /// - `window_size`: Number of timesteps per window
+    /// - `stride`: Step size between windows
+    ///
+    /// # Returns
+    ///
+    /// WindowedTimeSeries with windows from all series
+    pub fn from_multiple_series(series_vec: &[TimeSeries<T>], window_size: usize, stride: usize)
+        -> Result<Self, TimeSeriesError>
+    where
+        T: Copy + Default,
+    {
+        let mut all_windows = Vec::new();
+        let mut all_series_indices = Vec::new();
+        let mut all_window_starts = Vec::new();
+
+        for (series_idx, series) in series_vec.iter().enumerate() {
+            if series.len() < window_size {
+                continue; // Skip series that are too short
+            }
+
+            let num_windows = ((series.len() - window_size) / stride) + 1;
+
+            for i in 0..num_windows {
+                let start_idx = i * stride;
+                all_series_indices.push(series_idx);
+                all_window_starts.push(start_idx);
+
+                // Extract window data (single feature)
+                let mut window = vec![vec![]; 1]; // 1 feature
+                window[0] = (start_idx..start_idx + window_size)
+                    .filter_map(|idx| series.values[idx])
+                    .collect();
+
+                // Pad with zeros if window has missing values
+                while window[0].len() < window_size {
+                    window[0].push(T::default());
+                }
+
+                all_windows.push(window);
+            }
+        }
+
+        Ok(WindowedTimeSeries {
+            windows: all_windows,
+            labels: None,
+            series_indices: all_series_indices,
+            window_starts: all_window_starts,
+            window_size,
+            num_features: 1,
+        })
+    }
+
+    /// Returns the number of windows.
+    pub fn len(&self) -> usize {
+        self.windows.len()
+    }
+
+    /// Returns true if no windows exist.
+    pub fn is_empty(&self) -> bool {
+        self.windows.is_empty()
+    }
+
+    /// Gets a specific window by index.
+    pub fn get_window(&self, index: usize) -> Option<&Vec<Vec<T>>> {
+        self.windows.get(index)
+    }
+
+    /// Sets labels for supervised learning.
+    pub fn with_labels(mut self, labels: Vec<T>) -> Self {
+        self.labels = Some(labels);
+        self
+    }
+
+    /// Converts to a flat 3D array format suitable for ML: [N, F, W]
+    pub fn to_array(&self) -> Vec<Vec<Vec<T>>>
+    where
+        T: Clone,
+    {
+        self.windows.clone()
+    }
+}
+
 /// Errors that can occur during time series operations.
 #[derive(Debug, Clone, PartialEq)]
 pub enum TimeSeriesError {

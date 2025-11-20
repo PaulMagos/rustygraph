@@ -6,6 +6,60 @@
 use crate::core::features::{Feature, missing_data::MissingDataHandler};
 use std::ops::{Add, Sub, Mul, Div};
 
+/// Helper function to get a value at index with missing data handling.
+#[inline]
+fn get_value_with_handler<T: Copy>(
+    series: &[Option<T>],
+    index: usize,
+    handler: &dyn MissingDataHandler<T>,
+) -> Option<T> {
+    series[index].or_else(|| handler.handle(series, index))
+}
+
+/// Helper function to compute mean of values.
+#[inline]
+fn compute_mean<T>(values: &[T]) -> Option<T>
+where
+    T: Copy + Add<Output = T> + Div<Output = T> + From<f64>,
+{
+    if values.is_empty() {
+        return None;
+    }
+    let sum = values.iter().fold(None, |acc: Option<T>, &v| {
+        Some(acc.map_or(v, |a| a + v))
+    })?;
+    Some(sum / T::from(values.len() as f64))
+}
+
+/// Helper function to compute variance of values given their mean.
+#[inline]
+fn compute_variance<T>(values: &[T], mean: T) -> Option<T>
+where
+    T: Copy + Sub<Output = T> + Mul<Output = T> + Add<Output = T> + Div<Output = T> + From<f64>,
+{
+    if values.is_empty() {
+        return None;
+    }
+    let sum_sq_diff = values.iter().fold(None, |acc: Option<T>, &v| {
+        let diff = v - mean;
+        Some(acc.map_or(diff * diff, |a| a + diff * diff))
+    })?;
+    Some(sum_sq_diff / T::from(values.len() as f64))
+}
+
+/// Helper function to collect valid values from a window with handler fallback.
+#[inline]
+fn collect_window_values<T: Copy>(
+    series: &[Option<T>],
+    start: usize,
+    end: usize,
+    handler: &dyn MissingDataHandler<T>,
+) -> Vec<T> {
+    (start..end)
+        .filter_map(|i| get_value_with_handler(series, i, handler))
+        .collect()
+}
+
 /// Forward difference feature: y[i+1] - y[i]
 pub struct DeltaForwardFeature;
 
@@ -17,8 +71,8 @@ where
         if index >= series.len() - 1 {
             return None;
         }
-        let curr = series[index].or_else(|| handler.handle(series, index))?;
-        let next = series[index + 1].or_else(|| handler.handle(series, index + 1))?;
+        let curr = get_value_with_handler(series, index, handler)?;
+        let next = get_value_with_handler(series, index + 1, handler)?;
         Some(next - curr)
     }
 
@@ -42,8 +96,8 @@ where
         if index == 0 {
             return None;
         }
-        let curr = series[index].or_else(|| handler.handle(series, index))?;
-        let prev = series[index - 1].or_else(|| handler.handle(series, index - 1))?;
+        let curr = get_value_with_handler(series, index, handler)?;
+        let prev = get_value_with_handler(series, index - 1, handler)?;
         Some(curr - prev)
     }
 
@@ -67,8 +121,8 @@ where
         if index == 0 || index >= series.len() - 1 {
             return None;
         }
-        let prev = series[index - 1].or_else(|| handler.handle(series, index - 1))?;
-        let next = series[index + 1].or_else(|| handler.handle(series, index + 1))?;
+        let prev = get_value_with_handler(series, index - 1, handler)?;
+        let next = get_value_with_handler(series, index + 1, handler)?;
         Some((next - prev) / T::from(2.0))
     }
 
@@ -82,6 +136,8 @@ where
 }
 
 /// Local slope feature: (y[i+1] - y[i-1]) / 2 (assuming unit time steps)
+///
+/// Note: This is mathematically equivalent to DeltaSymmetricFeature.
 pub struct LocalSlopeFeature;
 
 impl<T> Feature<T> for LocalSlopeFeature
@@ -89,12 +145,8 @@ where
     T: Copy + Sub<Output = T> + Div<Output = T> + From<f64>,
 {
     fn compute(&self, series: &[Option<T>], index: usize, handler: &dyn MissingDataHandler<T>) -> Option<T> {
-        if index == 0 || index >= series.len() - 1 {
-            return None;
-        }
-        let prev = series[index - 1].or_else(|| handler.handle(series, index - 1))?;
-        let next = series[index + 1].or_else(|| handler.handle(series, index + 1))?;
-        Some((next - prev) / T::from(2.0))
+        // Delegate to DeltaSymmetricFeature as they compute the same thing
+        DeltaSymmetricFeature.compute(series, index, handler)
     }
 
     fn name(&self) -> &str {
@@ -117,9 +169,9 @@ where
         if index == 0 || index >= series.len() - 1 {
             return None;
         }
-        let prev = series[index - 1].or_else(|| handler.handle(series, index - 1))?;
-        let curr = series[index].or_else(|| handler.handle(series, index))?;
-        let next = series[index + 1].or_else(|| handler.handle(series, index + 1))?;
+        let prev = get_value_with_handler(series, index - 1, handler)?;
+        let curr = get_value_with_handler(series, index, handler)?;
+        let next = get_value_with_handler(series, index + 1, handler)?;
         // Second derivative: (y[i+1] - 2*y[i] + y[i-1])
         Some(next - curr * T::from(2.0) + prev)
     }
@@ -147,17 +199,8 @@ where
         let start = index.saturating_sub(self.window_size / 2);
         let end = (index + self.window_size / 2 + 1).min(series.len());
 
-        let mut sum = None;
-        let mut count = 0;
-
-        for i in start..end {
-            if let Some(val) = series[i].or_else(|| handler.handle(series, i)) {
-                sum = Some(sum.map_or(val, |s| s + val));
-                count += 1;
-            }
-        }
-
-        sum.map(|s| s / T::from(count as f64))
+        let values = collect_window_values(series, start, end, handler);
+        compute_mean(&values)
     }
 
     fn name(&self) -> &str {
@@ -187,27 +230,9 @@ where
         let start = index.saturating_sub(self.window_size / 2);
         let end = (index + self.window_size / 2 + 1).min(series.len());
 
-        let mut values = Vec::new();
-        for i in start..end {
-            if let Some(val) = series[i].or_else(|| handler.handle(series, i)) {
-                values.push(val);
-            }
-        }
-
-        if values.is_empty() {
-            return None;
-        }
-
-        let mean = values.iter().fold(None, |acc: Option<T>, &v| {
-            Some(acc.map_or(v, |a| a + v))
-        })? / T::from(values.len() as f64);
-
-        let variance = values.iter().fold(None, |acc: Option<T>, &v| {
-            let diff = v - mean;
-            Some(acc.map_or(diff * diff, |a| a + diff * diff))
-        })? / T::from(values.len() as f64);
-
-        Some(variance)
+        let values = collect_window_values(series, start, end, handler);
+        let mean = compute_mean(&values)?;
+        compute_variance(&values, mean)
     }
 
     fn name(&self) -> &str {
@@ -235,9 +260,9 @@ where
             return Some(T::from(0.0));
         }
 
-        let curr = series[index].or_else(|| handler.handle(series, index))?;
-        let prev = series[index - 1].or_else(|| handler.handle(series, index - 1))?;
-        let next = series[index + 1].or_else(|| handler.handle(series, index + 1))?;
+        let curr = get_value_with_handler(series, index, handler)?;
+        let prev = get_value_with_handler(series, index - 1, handler)?;
+        let next = get_value_with_handler(series, index + 1, handler)?;
 
         if curr > prev && curr > next {
             Some(T::from(1.0))
@@ -267,9 +292,9 @@ where
             return Some(T::from(0.0));
         }
 
-        let curr = series[index].or_else(|| handler.handle(series, index))?;
-        let prev = series[index - 1].or_else(|| handler.handle(series, index - 1))?;
-        let next = series[index + 1].or_else(|| handler.handle(series, index + 1))?;
+        let curr = get_value_with_handler(series, index, handler)?;
+        let prev = get_value_with_handler(series, index - 1, handler)?;
+        let next = get_value_with_handler(series, index + 1, handler)?;
 
         if curr < prev && curr < next {
             Some(T::from(1.0))
@@ -295,28 +320,17 @@ where
     T: Copy + Add<Output = T> + Sub<Output = T> + Mul<Output = T> + Div<Output = T> + From<f64> + Into<f64>,
 {
     fn compute(&self, series: &[Option<T>], index: usize, handler: &dyn MissingDataHandler<T>) -> Option<T> {
-        let curr = series[index].or_else(|| handler.handle(series, index))?;
+        let curr = get_value_with_handler(series, index, handler)?;
 
-        // Compute mean and std of entire series
-        let mut values = Vec::new();
-        for i in 0..series.len() {
-            if let Some(val) = series[i].or_else(|| handler.handle(series, i)) {
-                values.push(val);
-            }
-        }
+        // Collect all valid values from entire series
+        let values = collect_window_values(series, 0, series.len(), handler);
 
         if values.len() < 2 {
             return None;
         }
 
-        let mean = values.iter().fold(None, |acc: Option<T>, &v| {
-            Some(acc.map_or(v, |a| a + v))
-        })? / T::from(values.len() as f64);
-
-        let variance = values.iter().fold(None, |acc: Option<T>, &v| {
-            let diff = v - mean;
-            Some(acc.map_or(diff * diff, |a| a + diff * diff))
-        })? / T::from(values.len() as f64);
+        let mean = compute_mean(&values)?;
+        let variance = compute_variance(&values, mean)?;
 
         let std_val: f64 = variance.into();
         let std = T::from(std_val.sqrt());

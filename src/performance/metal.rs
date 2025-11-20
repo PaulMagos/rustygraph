@@ -122,7 +122,7 @@ impl MetalVisibilityPipeline {
         };
 
         let thread_groups = MTLSize {
-            width: ((n + 255) / 256) as u64,
+            width: n.div_ceil(256) as u64,
             height: 1,
             depth: 1,
         };
@@ -192,7 +192,7 @@ impl MetalVisibilityPipeline {
         encoder.set_bytes(3, std::mem::size_of::<u32>() as u64, &n as *const usize as *const _);
 
         let thread_group_size = MTLSize { width: 256, height: 1, depth: 1 };
-        let thread_groups = MTLSize { width: ((n + 255) / 256) as u64, height: 1, depth: 1 };
+        let thread_groups = MTLSize { width: n.div_ceil(256) as u64, height: 1, depth: 1 };
 
         encoder.dispatch_thread_groups(thread_groups, thread_group_size);
         encoder.end_encoding();
@@ -265,7 +265,7 @@ impl MetalVisibilityPipeline {
             encoder.set_bytes(3, std::mem::size_of::<u32>() as u64, &n as *const usize as *const _);
 
             let thread_group_size = MTLSize { width: 256, height: 1, depth: 1 };
-            let thread_groups = MTLSize { width: ((n + 255) / 256) as u64, height: 1, depth: 1 };
+            let thread_groups = MTLSize { width: n.div_ceil(256) as u64, height: 1, depth: 1 };
 
             encoder.dispatch_thread_groups(thread_groups, thread_group_size);
             encoder.end_encoding();
@@ -344,7 +344,7 @@ impl MetalVisibilityPipeline {
             encoder.set_bytes(3, std::mem::size_of::<u32>() as u64, &n as *const usize as *const _);
 
             let thread_group_size = MTLSize { width: 256, height: 1, depth: 1 };
-            let thread_groups = MTLSize { width: ((n + 255) / 256) as u64, height: 1, depth: 1 };
+            let thread_groups = MTLSize { width: n.div_ceil(256) as u64, height: 1, depth: 1 };
 
             encoder.dispatch_thread_groups(thread_groups, thread_group_size);
             encoder.end_encoding();
@@ -388,4 +388,3 @@ impl MetalVisibilityPipeline {
         Err("Metal is only available on Apple Silicon".to_string())
     }
 }
-
