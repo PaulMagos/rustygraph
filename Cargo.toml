@@ -33,6 +33,8 @@ hdf5 = { version = "0.8", optional = true }
 petgraph = { version = "0.6", optional = true }
 pyo3 = { version = "0.23", optional = true, features = ["extension-module", "abi3-py39"] }
 numpy = { version = "0.23", optional = true }
+burn = { version = "0.13", optional = true, default-features = false }
+polars = { version = "0.45", optional = true, features = ["lazy", "dtype-full"] }
 
 [features]
 default = ["parallel", "csv-import", "simd"]
@@ -49,6 +51,8 @@ hdf5-export = ["hdf5"]
 petgraph-integration = ["petgraph"]
 python-bindings = ["pyo3", "numpy", "ndarray", "parallel", "simd"]
 ndarray-support = ["ndarray"]
+burn-integration = ["burn"]
+polars-integration = ["polars"]
 
 
 [dev-dependencies]
@@ -90,6 +94,10 @@ required-features = ["parallel", "simd"]
 [[example]]
 name = "rust_benchmark"
 path = "examples/benchmarks/rust_benchmark.rs"
+
+[[example]]
+name = "ml_dataloader"
+path = "examples/ml_dataloader.rs"
 
 # Metal GPU support (Apple Silicon)
 [target.'cfg(target_os = "macos")'.dependencies]

@@ -278,36 +278,46 @@ where
     // because adjacent points always have visibility (no intermediate points to block).
     fn should_pop(&self, k: usize, j: usize, i: usize) -> bool {
         // Safety check: NEVER remove a node that's adjacent to the current node
-        // Adjacent nodes (no intermediate points) always see each other
-        if j + 1 >= i {
+        if self.is_adjacent(j, i) {
             return false;
         }
 
-        let vk: f64 = self.series.values[k].unwrap().into();
-        let vj: f64 = self.series.values[j].unwrap().into();
-        let vi: f64 = self.series.values[i].unwrap().into();
+        let (vk, vj, vi) = self.get_values(k, j, i);
+        let (tk, tj, ti) = (k as f64, j as f64, i as f64);
 
-        // Calculate the expected height of the line from k to i at position j
-        let t_k = k as f64;
-        let t_j = j as f64;
-        let t_i = i as f64;
+        let expected_height = self.calculate_expected_height(vk, vi, tk, tj, ti);
 
-        let expected_height = vk + (vi - vk) * ((t_j - t_k) / (t_i - t_k));
-
-        // Only remove j if it's STRICTLY below the line k→i
-        // AND the slopes confirm j is in a permanently shadowed valley
         if vj < expected_height {
-            // Check if j is in a monotonically shadowed position
-            let slope_kj = (vj - vk) / (t_j - t_k);
-            let slope_ki = (vi - vk) / (t_i - t_k);
-
-            // Remove j only if the slope to j is less than slope to i
-            // This means j is getting increasingly shadowed
-            slope_kj < slope_ki
+            self.is_permanently_shadowed(vk, vj, vi, tk, tj, ti)
         } else {
-            // j is on or above the line, definitely keep it
             false
         }
+    }
+
+    /// Check if two indices are adjacent
+    fn is_adjacent(&self, j: usize, i: usize) -> bool {
+        j + 1 >= i
+    }
+
+    /// Get values for three indices
+    fn get_values(&self, k: usize, j: usize, i: usize) -> (f64, f64, f64) {
+        (
+            self.series.values[k].unwrap().into(),
+            self.series.values[j].unwrap().into(),
+            self.series.values[i].unwrap().into(),
+        )
+    }
+
+    /// Calculate expected height of line from k to i at position j
+    fn calculate_expected_height(&self, vk: f64, vi: f64, tk: f64, tj: f64, ti: f64) -> f64 {
+        vk + (vi - vk) * ((tj - tk) / (ti - tk))
+    }
+
+    /// Check if point j is in a permanently shadowed position
+    fn is_permanently_shadowed(&self, vk: f64, vj: f64, vi: f64, tk: f64, tj: f64, ti: f64) -> bool {
+        let slope_kj = (vj - vk) / (tj - tk);
+        let slope_ki = (vi - vk) / (ti - tk);
+        slope_kj < slope_ki
     }
 }
 /// Parallel edge computation (when parallel feature is enabled).
@@ -340,69 +350,95 @@ where
     ///
     /// HashMap of edges with weights, same as sequential version
     pub fn compute_edges_parallel(&self) -> HashMap<(usize, usize), f64> {
-        use rayon::prelude::*;
-
         let n = self.series.len();
-        if n <= 100 {
-            // For small graphs, sequential is faster (avoid parallelization overhead)
+        if self.should_use_sequential(n) {
             return self.compute_edges();
         }
 
-        // Parallel strategy: Process target nodes in parallel
-        // For each target node i, check visibility from ALL previous nodes 0..i
-        // This is still O(n²) worst case but parallelizes well
+        let chunk_results = self.process_chunks_in_parallel(n);
+        self.merge_chunk_results(chunk_results)
+    }
 
-        let chunk_results: Vec<HashMap<(usize, usize), f64>> = (0..n)
+    /// Check if sequential processing is better for small graphs
+    fn should_use_sequential(&self, n: usize) -> bool {
+        n <= 100
+    }
+
+    /// Process chunks in parallel
+    fn process_chunks_in_parallel(&self, n: usize) -> Vec<HashMap<(usize, usize), f64>> {
+        use rayon::prelude::*;
+
+        (0..n)
             .collect::<Vec<_>>()
-            .par_chunks(64)  // Process 64 nodes at a time
-            .map(|target_chunk| {
-                let mut local_edges = HashMap::new();
+            .par_chunks(64)
+            .map(|target_chunk| self.process_target_chunk(target_chunk))
+            .collect()
+    }
 
-                for &i in target_chunk {
-                    // For each target node i, check visibility from all previous nodes
-                    // Use envelope optimization for this single target
-                    let mut stack: Vec<usize> = Vec::new();
+    /// Process a single chunk of target nodes
+    fn process_target_chunk(&self, target_chunk: &[usize]) -> HashMap<(usize, usize), f64> {
+        let mut local_edges = HashMap::new();
 
-                    for j in 0..i {
-                        // Update envelope for natural visibility
-                        if matches!(self.rule, VisibilityType::Natural) {
-                            while stack.len() >= 2 {
-                                let prev_j = *stack.last().unwrap();
-                                let prev_k = stack[stack.len() - 2];
-                                if self.should_pop(prev_k, prev_j, j) {
-                                    stack.pop();
-                                } else {
-                                    break;
-                                }
-                            }
-                        }
+        for &i in target_chunk {
+            let stack = self.build_envelope_stack_for_target(i);
+            self.add_visible_edges_from_stack(&mut local_edges, &stack, i);
+        }
 
-                        stack.push(j);
-                    }
+        local_edges
+    }
 
-                    // Now check visibility from nodes in stack to current node i
-                    for &j in stack.iter().rev() {
-                        if self.is_visible(j, i) {
-                            let vj = self.series.values[j].unwrap();
-                            let vi = self.series.values[i].unwrap();
-                            let w = (self.weight_fn)(j, i, vj, vi);
-                            local_edges.insert((j, i), w);
-                        } else if matches!(self.rule, VisibilityType::Horizontal) {
-                            break;
-                        }
-                    }
+    /// Build envelope stack for a target node
+    fn build_envelope_stack_for_target(&self, target: usize) -> Vec<usize> {
+        let mut stack = Vec::new();
+
+        for j in 0..target {
+            self.update_envelope_for_parallel(&mut stack, j);
+            stack.push(j);
+        }
+
+        stack
+    }
+
+    /// Update envelope during parallel processing
+    fn update_envelope_for_parallel(&self, stack: &mut Vec<usize>, j: usize) {
+        if matches!(self.rule, VisibilityType::Natural) {
+            while stack.len() >= 2 {
+                let prev_j = *stack.last().unwrap();
+                let prev_k = stack[stack.len() - 2];
+                if self.should_pop(prev_k, prev_j, j) {
+                    stack.pop();
+                } else {
+                    break;
                 }
+            }
+        }
+    }
 
-                local_edges
-            })
-            .collect();
+    /// Add visible edges from stack to target node
+    fn add_visible_edges_from_stack(
+        &self,
+        edges: &mut HashMap<(usize, usize), f64>,
+        stack: &[usize],
+        target: usize,
+    ) {
+        for &j in stack.iter().rev() {
+            if self.is_visible(j, target) {
+                let vj = self.series.values[j].unwrap();
+                let vi = self.series.values[target].unwrap();
+                let w = (self.weight_fn)(j, target, vj, vi);
+                edges.insert((j, target), w);
+            } else if matches!(self.rule, VisibilityType::Horizontal) {
+                break;
+            }
+        }
+    }
 
-        // Merge all results
+    /// Merge results from all chunks
+    fn merge_chunk_results(&self, chunk_results: Vec<HashMap<(usize, usize), f64>>) -> HashMap<(usize, usize), f64> {
         let mut edges = HashMap::new();
         for chunk_edges in chunk_results {
             edges.extend(chunk_edges);
         }
-
         edges
     }
 }

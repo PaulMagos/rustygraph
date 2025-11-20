@@ -7,6 +7,7 @@ pub mod time_series;
 pub mod visibility_graph;
 pub mod algorithms;
 pub mod features;
+pub mod data_split;
 // Re-export main types for convenience
 pub use self::time_series::{TimeSeries, TimeSeriesError};
 pub use self::visibility_graph::{VisibilityGraph, VisibilityGraphBuilder, GraphError, GraphDirection};

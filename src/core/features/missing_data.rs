@@ -263,6 +263,138 @@ impl fmt::Display for ImputationError {
 
 impl std::error::Error for ImputationError {}
 
+// Helper functions for each imputation strategy
+impl MissingDataStrategy {
+    /// Find the previous valid value in the series before the given index.
+    fn find_prev_value<T: Copy>(series: &[Option<T>], index: usize) -> Option<T> {
+        series[..index]
+            .iter()
+            .rev()
+            .find_map(|&v| v)
+    }
+
+    /// Find the next valid value in the series after the given index.
+    fn find_next_value<T: Copy>(series: &[Option<T>], index: usize) -> Option<T> {
+        series.get(index + 1..)
+            .and_then(|slice| slice.iter().find_map(|&v| v))
+    }
+
+    /// Linear interpolation: average of neighboring valid values.
+    fn handle_linear_interpolation<T>(series: &[Option<T>], index: usize) -> Option<T>
+    where
+        T: Copy + std::ops::Add<Output = T> + std::ops::Div<Output = T> + From<f64>,
+    {
+        if index == 0 || index >= series.len() - 1 {
+            return None;
+        }
+
+        let prev_val = Self::find_prev_value(series, index);
+        let next_val = Self::find_next_value(series, index);
+
+        match (prev_val, next_val) {
+            (Some(p), Some(n)) => Some((p + n) / T::from(2.0)),
+            _ => None,
+        }
+    }
+
+    /// Forward fill: use the last valid value.
+    fn handle_forward_fill<T: Copy>(series: &[Option<T>], index: usize) -> Option<T> {
+        Self::find_prev_value(series, index)
+    }
+
+    /// Backward fill: use the next valid value.
+    fn handle_backward_fill<T: Copy>(series: &[Option<T>], index: usize) -> Option<T> {
+        Self::find_next_value(series, index)
+    }
+
+    /// Nearest neighbor: use the closest valid value by distance.
+    fn handle_nearest_neighbor<T: Copy>(series: &[Option<T>], index: usize) -> Option<T> {
+        let (prev_val, prev_dist) = series[..index]
+            .iter()
+            .enumerate()
+            .rev()
+            .find_map(|(i, &v)| v.map(|val| (val, index - i)))
+            .unwrap_or((None?, usize::MAX));
+
+        let (next_val, next_dist) = series.get(index + 1..)
+            .and_then(|slice| {
+                slice.iter()
+                    .enumerate()
+                    .find_map(|(offset, &v)| v.map(|val| (val, offset + 1)))
+            })
+            .unwrap_or((None?, usize::MAX));
+
+        match (prev_dist, next_dist) {
+            (usize::MAX, usize::MAX) => None,
+            (_, usize::MAX) => Some(prev_val),
+            (usize::MAX, _) => Some(next_val),
+            (pd, nd) if pd <= nd => Some(prev_val),
+            _ => Some(next_val),
+        }
+    }
+
+    /// Mean imputation: average of values in a local window.
+    fn handle_mean_imputation<T>(
+        series: &[Option<T>],
+        index: usize,
+        window_size: usize,
+    ) -> Option<T>
+    where
+        T: Copy + std::ops::Add<Output = T> + std::ops::Div<Output = T> + From<f64>,
+    {
+        let start = index.saturating_sub(window_size / 2);
+        let end = (index + window_size / 2 + 1).min(series.len());
+
+        let (sum, count) = series[start..end]
+            .iter()
+            .enumerate()
+            .filter(|(i, _)| start + i != index)
+            .filter_map(|(_, &val)| val)
+            .fold((None, 0), |(acc, cnt), v| {
+                (Some(acc.map_or(v, |s| s + v)), cnt + 1)
+            });
+
+        if count > 0 {
+            sum.map(|s| s / T::from(count as f64))
+        } else {
+            None
+        }
+    }
+
+    /// Median imputation: median of values in a local window.
+    fn handle_median_imputation<T>(
+        series: &[Option<T>],
+        index: usize,
+        window_size: usize,
+    ) -> Option<T>
+    where
+        T: Copy + PartialOrd + std::ops::Add<Output = T> + std::ops::Div<Output = T> + From<f64>,
+    {
+        let start = index.saturating_sub(window_size / 2);
+        let end = (index + window_size / 2 + 1).min(series.len());
+
+        let mut values: Vec<T> = series[start..end]
+            .iter()
+            .enumerate()
+            .filter(|(i, _)| start + i != index)
+            .filter_map(|(_, &val)| val)
+            .collect();
+
+        if values.is_empty() {
+            return None;
+        }
+
+        values.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+
+        let mid = values.len() / 2;
+        if values.len() % 2 == 0 {
+            Some((values[mid - 1] + values[mid]) / T::from(2.0))
+        } else {
+            Some(values[mid])
+        }
+    }
+}
+
 // Implement MissingDataHandler for MissingDataStrategy
 impl<T> MissingDataHandler<T> for MissingDataStrategy
 where
@@ -271,142 +403,24 @@ where
     fn handle(&self, series: &[Option<T>], index: usize) -> Option<T> {
         match self {
             MissingDataStrategy::LinearInterpolation => {
-                if index == 0 || index >= series.len() - 1 {
-                    return None;
-                }
-
-                // Find previous valid value
-                let mut prev_val = None;
-                for i in (0..index).rev() {
-                    if let Some(v) = series[i] {
-                        prev_val = Some(v);
-                        break;
-                    }
-                }
-
-                // Find next valid value
-                let next_val = series[(index + 1)..]
-                    .iter()
-                    .find_map(|&v| v);
-
-                match (prev_val, next_val) {
-                    (Some(p), Some(n)) => Some((p + n) / T::from(2.0)),
-                    _ => None,
-                }
+                Self::handle_linear_interpolation(series, index)
             }
-
             MissingDataStrategy::ForwardFill => {
-                // Find previous valid value
-                for i in (0..index).rev() {
-                    if let Some(v) = series[i] {
-                        return Some(v);
-                    }
-                }
-                None
+                Self::handle_forward_fill(series, index)
             }
-
             MissingDataStrategy::BackwardFill => {
-                // Find next valid value
-                series[(index + 1)..]
-                    .iter()
-                    .find_map(|&v| v)
+                Self::handle_backward_fill(series, index)
             }
-
             MissingDataStrategy::NearestNeighbor => {
-                let mut prev_val = None;
-                let mut prev_dist = usize::MAX;
-                for i in (0..index).rev() {
-                    if let Some(v) = series[i] {
-                        prev_val = Some(v);
-                        prev_dist = index - i;
-                        break;
-                    }
-                }
-
-                let mut next_val = None;
-                let mut next_dist = usize::MAX;
-                for (offset, &val) in series[(index + 1)..].iter().enumerate() {
-                    if let Some(v) = val {
-                        next_val = Some(v);
-                        next_dist = offset + 1;
-                        break;
-                    }
-                }
-
-                match (prev_val, next_val) {
-                    (Some(p), Some(n)) => {
-                        if prev_dist <= next_dist {
-                            Some(p)
-                        } else {
-                            Some(n)
-                        }
-                    }
-                    (Some(p), None) => Some(p),
-                    (None, Some(n)) => Some(n),
-                    (None, None) => None,
-                }
+                Self::handle_nearest_neighbor(series, index)
             }
-
             MissingDataStrategy::MeanImputation { window_size } => {
-                let start = index.saturating_sub(window_size / 2);
-                let end = (index + window_size / 2 + 1).min(series.len());
-
-                let mut sum = None;
-                let mut count = 0;
-
-                for (i, &val) in series.iter().enumerate().take(end).skip(start) {
-                    if i != index {
-                        if let Some(v) = val {
-                            sum = Some(sum.map_or(v, |s| s + v));
-                            count += 1;
-                        }
-                    }
-                }
-
-                if count > 0 {
-                    sum.map(|s| s / T::from(count as f64))
-                } else {
-                    None
-                }
+                Self::handle_mean_imputation(series, index, *window_size)
             }
-
             MissingDataStrategy::MedianImputation { window_size } => {
-                let start = index.saturating_sub(window_size / 2);
-                let end = (index + window_size / 2 + 1).min(series.len());
-
-                let mut values: Vec<T> = Vec::new();
-                for (i, &val) in series.iter().enumerate().take(end).skip(start) {
-                    if i != index {
-                        if let Some(v) = val {
-                            values.push(v);
-                        }
-                    }
-                }
-
-                if values.is_empty() {
-                    return None;
-                }
-
-                values.sort_by(|a, b| {
-                    if a < b {
-                        std::cmp::Ordering::Less
-                    } else if a > b {
-                        std::cmp::Ordering::Greater
-                    } else {
-                        std::cmp::Ordering::Equal
-                    }
-                });
-
-                let mid = values.len() / 2;
-                if values.len().is_multiple_of(2) {
-                    Some((values[mid - 1] + values[mid]) / T::from(2.0))
-                } else {
-                    Some(values[mid])
-                }
+                Self::handle_median_imputation(series, index, *window_size)
             }
-
             MissingDataStrategy::ZeroFill => Some(T::from(0.0)),
-
             MissingDataStrategy::Drop => None,
 
             MissingDataStrategy::Fallback { primary, fallback } => {

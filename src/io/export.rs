@@ -74,11 +74,26 @@ where
 
         writeln!(output, "{{{}", newline).unwrap();
         writeln!(output, "{}\"nodes\": {},", indent, self.node_count).unwrap();
+
+        self.write_json_edges(&mut output, &options, indent);
+
+        if options.include_features && !self.node_features.is_empty() {
+            self.write_json_features(&mut output, indent);
+        }
+
+        writeln!(output, "}}").unwrap();
+        output
+    }
+
+    /// Write edges section of JSON output
+    fn write_json_edges(&self, output: &mut String, options: &ExportOptions, indent: &str) {
         writeln!(output, "{}\"edges\": [", indent).unwrap();
 
         let edges: Vec<_> = self.edges.iter().collect();
         for (i, (&(src, dst), &weight)) in edges.iter().enumerate() {
             let comma = if i < edges.len() - 1 { "," } else { "" };
+
+            // Write edge inline to avoid too many arguments
             if options.include_weights {
                 writeln!(
                     output,
@@ -95,26 +110,34 @@ where
         }
 
         writeln!(output, "{}]", indent).unwrap();
+    }
 
-        if options.include_features && !self.node_features.is_empty() {
-            writeln!(output, "{},\"features\": [", indent).unwrap();
-            for (i, features) in self.node_features.iter().enumerate() {
-                let comma = if i < self.node_features.len() - 1 { "," } else { "" };
-                write!(output, "{}{}{{\"node\": {}, ", indent, indent, i).unwrap();
+    /// Write features section of JSON output
+    fn write_json_features(&self, output: &mut String, indent: &str) {
+        writeln!(output, "{},\"features\": [", indent).unwrap();
 
-                let feature_items: Vec<_> = features.iter().collect();
-                write!(output, "\"values\": {{").unwrap();
-                for (j, (name, value)) in feature_items.iter().enumerate() {
-                    let fcomma = if j < feature_items.len() - 1 { ", " } else { "" };
-                    write!(output, "\"{}\": {}{}", name, value, fcomma).unwrap();
-                }
-                writeln!(output, "}}}}{}",  comma).unwrap();
-            }
-            writeln!(output, "{}]", indent).unwrap();
+        for (i, features) in self.node_features.iter().enumerate() {
+            let comma = if i < self.node_features.len() - 1 { "," } else { "" };
+            self.write_json_node_features(output, i, features, indent, comma);
         }
 
-        writeln!(output, "}}").unwrap();
-        output
+        writeln!(output, "{}]", indent).unwrap();
+    }
+
+    /// Write features for a single node in JSON format
+    fn write_json_node_features(&self, output: &mut String, node_id: usize,
+                                 features: &std::collections::HashMap<String, T>,
+                                 indent: &str, comma: &str) {
+        write!(output, "{}{}{{\"node\": {}, ", indent, indent, node_id).unwrap();
+        write!(output, "\"values\": {{").unwrap();
+
+        let feature_items: Vec<_> = features.iter().collect();
+        for (j, (name, value)) in feature_items.iter().enumerate() {
+            let fcomma = if j < feature_items.len() - 1 { ", " } else { "" };
+            write!(output, "\"{}\": {}{}", name, value, fcomma).unwrap();
+        }
+
+        writeln!(output, "}}}}{}",  comma).unwrap();
     }
 
     /// Exports the graph as a CSV edge list.
@@ -296,36 +319,53 @@ where
         let graph_type = if self.directed { "digraph" } else { "graph" };
         let edge_op = if self.directed { "->" } else { "--" };
 
+        self.write_dot_header(&mut output, graph_type);
+        self.write_dot_nodes(&mut output);
+        self.write_dot_edges(&mut output, edge_op);
+
+        writeln!(output, "}}").unwrap();
+        output
+    }
+
+    /// Write DOT header
+    fn write_dot_header(&self, output: &mut String, graph_type: &str) {
         writeln!(output, "{} {{", graph_type).unwrap();
         writeln!(output, "  rankdir=LR;").unwrap();
         writeln!(output, "  node [shape=circle];").unwrap();
         writeln!(output).unwrap();
+    }
 
-        // Nodes
+    /// Write DOT nodes section
+    fn write_dot_nodes(&self, output: &mut String) {
         for i in 0..self.node_count {
             write!(output, "  {} [label=\"{}\"]", i, i).unwrap();
 
-            // Add features as tooltip if present
             if let Some(features) = self.node_features.get(i) {
                 if !features.is_empty() {
-                    write!(output, " [tooltip=\"").unwrap();
-                    let mut first = true;
-                    for (name, value) in features {
-                        if !first {
-                            write!(output, "\\n").unwrap();
-                        }
-                        write!(output, "{}: {:.2}", name, value).unwrap();
-                        first = false;
-                    }
-                    write!(output, "\"]").unwrap();
+                    self.write_dot_node_features(output, features);
                 }
             }
             writeln!(output, ";").unwrap();
         }
-
         writeln!(output).unwrap();
+    }
 
-        // Edges
+    /// Write features as tooltip for DOT node
+    fn write_dot_node_features(&self, output: &mut String, features: &std::collections::HashMap<String, T>) {
+        write!(output, " [tooltip=\"").unwrap();
+        let mut first = true;
+        for (name, value) in features {
+            if !first {
+                write!(output, "\\n").unwrap();
+            }
+            write!(output, "{}: {}", name, value).unwrap();
+            first = false;
+        }
+        write!(output, "\"]").unwrap();
+    }
+
+    /// Write DOT edges section
+    fn write_dot_edges(&self, output: &mut String, edge_op: &str) {
         for (&(src, dst), &weight) in &self.edges {
             if self.directed || src < dst {
                 write!(output, "  {} {} {}", src, edge_op, dst).unwrap();
@@ -335,9 +375,6 @@ where
                 writeln!(output, ";").unwrap();
             }
         }
-
-        writeln!(output, "}}").unwrap();
-        output
     }
 
     /// Exports the graph to DOT format with custom node labels.
@@ -423,44 +460,63 @@ where
     pub fn to_graphml(&self) -> String {
         let mut output = String::new();
 
-        // XML header
+        self.write_graphml_header(&mut output);
+        self.write_graphml_key_definitions(&mut output);
+
+        let edge_default = if self.directed { "directed" } else { "undirected" };
+        writeln!(output, "  <graph id=\"G\" edgedefault=\"{}\">", edge_default).unwrap();
+
+        self.write_graphml_nodes(&mut output);
+        self.write_graphml_edges(&mut output);
+
+        writeln!(output, "  </graph>").unwrap();
+        writeln!(output, "</graphml>").unwrap();
+
+        output
+    }
+
+    /// Write GraphML XML header
+    fn write_graphml_header(&self, output: &mut String) {
         writeln!(output, "<?xml version=\"1.0\" encoding=\"UTF-8\"?>").unwrap();
         writeln!(output, "<graphml xmlns=\"http://graphml.graphdrawing.org/xmlns\"").unwrap();
         writeln!(output, "         xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\"").unwrap();
         writeln!(output, "         xsi:schemaLocation=\"http://graphml.graphdrawing.org/xmlns").unwrap();
         writeln!(output, "         http://graphml.graphdrawing.org/xmlns/1.0/graphml.xsd\">").unwrap();
         writeln!(output).unwrap();
+    }
 
-        // Define attributes
+    /// Write GraphML key definitions for attributes
+    fn write_graphml_key_definitions(&self, output: &mut String) {
         writeln!(output, "  <key id=\"weight\" for=\"edge\" attr.name=\"weight\" attr.type=\"double\"/>").unwrap();
 
-        // Define feature attributes
         if !self.node_features.is_empty() {
-            let mut all_features: HashSet<String> = HashSet::new();
-            for features in &self.node_features {
-                for name in features.keys() {
-                    all_features.insert(name.clone());
-                }
-            }
-            let mut sorted_features: Vec<_> = all_features.into_iter().collect();
-            sorted_features.sort();
-
+            let sorted_features = self.collect_sorted_feature_names();
             for feature in &sorted_features {
                 writeln!(output, "  <key id=\"{}\" for=\"node\" attr.name=\"{}\" attr.type=\"double\"/>",
                     feature, feature).unwrap();
             }
         }
         writeln!(output).unwrap();
+    }
 
-        // Graph element
-        let edge_default = if self.directed { "directed" } else { "undirected" };
-        writeln!(output, "  <graph id=\"G\" edgedefault=\"{}\">", edge_default).unwrap();
+    /// Collect and sort all unique feature names
+    fn collect_sorted_feature_names(&self) -> Vec<String> {
+        let mut all_features: HashSet<String> = HashSet::new();
+        for features in &self.node_features {
+            for name in features.keys() {
+                all_features.insert(name.clone());
+            }
+        }
+        let mut sorted_features: Vec<_> = all_features.into_iter().collect();
+        sorted_features.sort();
+        sorted_features
+    }
 
-        // Nodes
+    /// Write GraphML nodes section
+    fn write_graphml_nodes(&self, output: &mut String) {
         for i in 0..self.node_count {
             writeln!(output, "    <node id=\"n{}\">", i).unwrap();
 
-            // Node features
             if let Some(features) = self.node_features.get(i) {
                 for (name, value) in features {
                     writeln!(output, "      <data key=\"{}\">{}</data>", name, value).unwrap();
@@ -469,8 +525,10 @@ where
 
             writeln!(output, "    </node>").unwrap();
         }
+    }
 
-        // Edges
+    /// Write GraphML edges section
+    fn write_graphml_edges(&self, output: &mut String) {
         let mut edge_id = 0;
         for (&(src, dst), &weight) in &self.edges {
             if self.directed || src < dst {
@@ -481,11 +539,6 @@ where
                 edge_id += 1;
             }
         }
-
-        writeln!(output, "  </graph>").unwrap();
-        writeln!(output, "</graphml>").unwrap();
-
-        output
     }
 }
 

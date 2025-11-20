@@ -248,34 +248,62 @@ impl AdvancedFeatures {
             return 0.0;
         }
 
-        let mut phi = vec![0.0; 2];
+        let phi_m = Self::compute_phi(data, m, r);
+        let phi_m_plus_1 = Self::compute_phi(data, m + 1, r);
 
-        for k in 0..2 {
-            let m_curr = m + k;
-            let mut count = 0;
+        Self::calculate_entropy_from_phi(phi_m, phi_m_plus_1)
+    }
 
-            for i in 0..n - m_curr {
-                for j in 0..n - m_curr {
-                    if i != j {
-                        let mut max_diff = 0.0;
-                        for l in 0..m_curr {
-                            let diff = (data[i + l] - data[j + l]).abs();
-                            if diff > max_diff {
-                                max_diff = diff;
-                            }
-                        }
-                        if max_diff <= r {
-                            count += 1;
-                        }
-                    }
-                }
-            }
-
-            phi[k] = (count as f64) / ((n - m_curr) * (n - m_curr - 1)) as f64;
+    /// Compute phi statistic for sample entropy
+    fn compute_phi(data: &[f64], m: usize, r: f64) -> f64 {
+        let n = data.len();
+        if n < m {
+            return 0.0;
         }
 
-        if phi[0] > 0.0 && phi[1] > 0.0 {
-            -(phi[1] / phi[0]).ln()
+        let count = Self::count_matching_patterns(data, m, r);
+        let total_comparisons = (n - m) * (n - m - 1);
+
+        if total_comparisons > 0 {
+            count as f64 / total_comparisons as f64
+        } else {
+            0.0
+        }
+    }
+
+    /// Count matching patterns within tolerance
+    fn count_matching_patterns(data: &[f64], m: usize, r: f64) -> usize {
+        let n = data.len();
+        let mut count = 0;
+
+        for i in 0..n - m {
+            for j in 0..n - m {
+                if i != j && Self::patterns_match(data, i, j, m, r) {
+                    count += 1;
+                }
+            }
+        }
+
+        count
+    }
+
+    /// Check if two patterns match within tolerance
+    fn patterns_match(data: &[f64], i: usize, j: usize, m: usize, r: f64) -> bool {
+        let max_diff = Self::max_pattern_difference(data, i, j, m);
+        max_diff <= r
+    }
+
+    /// Find maximum difference between two patterns
+    fn max_pattern_difference(data: &[f64], i: usize, j: usize, m: usize) -> f64 {
+        (0..m)
+            .map(|l| (data[i + l] - data[j + l]).abs())
+            .fold(0.0, f64::max)
+    }
+
+    /// Calculate final entropy from phi values
+    fn calculate_entropy_from_phi(phi_m: f64, phi_m_plus_1: f64) -> f64 {
+        if phi_m > 0.0 && phi_m_plus_1 > 0.0 {
+            -(phi_m_plus_1 / phi_m).ln()
         } else {
             0.0
         }
@@ -296,28 +324,54 @@ impl AdvancedFeatures {
             return 0.5;
         }
 
-        // Simplified R/S analysis
-        let mean: f64 = data.iter().sum::<f64>() / n as f64;
-        let std: f64 = (data.iter().map(|&x| (x - mean).powi(2)).sum::<f64>() / n as f64).sqrt();
+        let mean = Self::calculate_mean(data);
+        let std = Self::calculate_std(data, mean);
 
         if std == 0.0 {
             return 0.5;
         }
 
-        // Cumulative deviations
-        let mut cumsum = 0.0;
-        let mut deviations = Vec::new();
-        for &x in data {
-            cumsum += x - mean;
-            deviations.push(cumsum);
-        }
-
-        let range = deviations.iter().fold(f64::NEG_INFINITY, |a, &b| a.max(b))
-            - deviations.iter().fold(f64::INFINITY, |a, &b| a.min(b));
-
+        let deviations = Self::compute_cumulative_deviations(data, mean);
+        let range = Self::compute_range(&deviations);
         let rs = range / std;
 
-        // Hurst = log(R/S) / log(n)
+        Self::calculate_hurst_from_rs(rs, n)
+    }
+
+    /// Calculate mean of data
+    fn calculate_mean(data: &[f64]) -> f64 {
+        data.iter().sum::<f64>() / data.len() as f64
+    }
+
+    /// Calculate standard deviation
+    fn calculate_std(data: &[f64], mean: f64) -> f64 {
+        let n = data.len();
+        let variance = data.iter()
+            .map(|&x| (x - mean).powi(2))
+            .sum::<f64>() / n as f64;
+        variance.sqrt()
+    }
+
+    /// Compute cumulative deviations from mean
+    fn compute_cumulative_deviations(data: &[f64], mean: f64) -> Vec<f64> {
+        let mut cumsum = 0.0;
+        data.iter()
+            .map(|&x| {
+                cumsum += x - mean;
+                cumsum
+            })
+            .collect()
+    }
+
+    /// Compute range of deviations
+    fn compute_range(deviations: &[f64]) -> f64 {
+        let max = deviations.iter().fold(f64::NEG_INFINITY, |a, &b| a.max(b));
+        let min = deviations.iter().fold(f64::INFINITY, |a, &b| a.min(b));
+        max - min
+    }
+
+    /// Calculate Hurst exponent from R/S ratio
+    fn calculate_hurst_from_rs(rs: f64, n: usize) -> f64 {
         if rs > 0.0 {
             rs.ln() / (n as f64).ln()
         } else {
@@ -359,4 +413,3 @@ mod tests {
         assert!(hurst >= 0.0 && hurst <= 1.0);
     }
 }
-

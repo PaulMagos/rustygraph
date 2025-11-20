@@ -126,9 +126,13 @@ pub use integrations::petgraph as petgraph_integration;
 pub use integrations::ndarray as ndarray_support;
 #[cfg(feature = "python-bindings")]
 pub use integrations::python;
+#[cfg(feature = "burn-integration")]
+pub use integrations::burn;
 
 // Re-export main types for convenience
 pub use core::{TimeSeries, TimeSeriesError};
+pub use core::time_series::WindowedTimeSeries;
+pub use core::data_split::{DataSplit, SplitStrategy, split_windowed_data};
 pub use core::{VisibilityGraph, VisibilityGraphBuilder, GraphError, GraphDirection};
 pub use core::{Feature, FeatureSet, BuiltinFeature};
 pub use core::{MissingDataHandler, MissingDataStrategy, ImputationError};
