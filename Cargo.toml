@@ -1,8 +1,8 @@
 [package]
 name = "rustygraph"
-version = "0.4.1"
+version = "0.4.2"
 edition = "2021"
-authors = ["Paul Magos <paul@examplze.com>"]
+authors = ["Paul Magos <paul.magos@tum.de>"]
 description = "A high-performance library for visibility graph computation from time series data"
 documentation = "https://docs.rs/rustygraph"
 repository = "https://github.com/paulmagos/rustygraph"
