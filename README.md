@@ -1,6 +1,6 @@
 # RustyGraph 🚀
 
-[![Crates.io](https://img.shields.io/crates/v/rustygraph)](https://crates.io/crates/rustygraph)]
+[![Crates.io](https://img.shields.io/crates/v/rustygraph)](https://crates.io/crates/rustygraph)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
 **A blazingly fast, cross-platform visibility graph library for time series analysis.**
