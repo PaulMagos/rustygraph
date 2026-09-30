@@ -16,8 +16,8 @@ RustyGraph is a high-performance Rust library for computing visibility graphs fr
 ## Features
 
 ### Core Features (Always Available)
-- **Natural Visibility Graphs**: O(n) implementation using monotonic stack optimization
-- **Horizontal Visibility Graphs**: Fast O(n) average case algorithm
+- **Natural Visibility Graphs**: exact divide & conquer, O(n log n) average, parallel for large series
+- **Horizontal Visibility Graphs**: O(n) monotone stack
 - **Node Feature Computation**: 10 built-in features plus custom feature support
 - **Missing Data Handling**: 8 configurable strategies for imputation
 - **Weighted Graphs**: Custom edge weight functions
@@ -280,10 +280,142 @@ impl Feature<f64> for RangeFeature {
 
 ## Performance
 
-- **Natural visibility**: O(n) per node using monotonic stack optimization
-- **Horizontal visibility**: O(n) average case
-- **Memory efficient**: Adjacency list representation for sparse graphs
-- **Type generic**: Works with both `f32` and `f64`
+Natural visibility uses divide & conquer on the maximum without recursion: the
+segment in which each point is the maximum is found in O(n) with monotone
+stacks, then each point scans only its own segment. Every edge is found exactly
+once, from its taller endpoint, and the scans are independent, so large series
+run in parallel with no synchronisation. Cost is O(n log n) on average and
+O(n²) in the worst case (monotone series), the same as every known exact
+algorithm. Horizontal visibility is a single O(n) monotone stack. Slopes are
+compared by cross-multiplication, not division.
+
+Measured against [ts2vg](https://github.com/CarlosBergillos/ts2vg) 1.2.4 on an
+Apple M4 (10 cores), using `scripts/benchmark_vs_ts2vg.py`. Times are best of 5;
+ts2vg is timed on `build()` only. Output is identical, except that ts2vg drops a
+few edges that exact arithmetic confirms are visible.
+
+| Workload | n | ts2vg | RustyGraph, 1 thread | RustyGraph, 10 threads |
+|---|---|---|---|---|
+| NVG, white noise | 1,000,000 | 244 ms | 49 ms (**4.9×**) | 23 ms (**10.5×**) |
+| NVG, random walk | 1,000,000 | 5.81 s | 1.03 s (**5.7×**) | 0.24 s (**24.7×**) |
+| NVG, sine + noise | 1,000,000 | 554 ms | 108 ms (**5.1×**) | 38 ms (**15.6×**) |
+| NVG, monotone (worst case) | 50,000 | 3.04 s | 457 ms (**6.7×**) | 102 ms (**30.5×**) |
+| NVG, white noise | 1,000 | 0.18 ms | 0.018 ms (**9.7×**) | — |
+| HVG, white noise | 1,000,000 | 139 ms | 10.8 ms (**12.9×**) | — |
+| NVG, 10k windows of 23, `natural_visibility_batch` | 23 × 10k | 95 ms | 7.1 ms (**13.4×**) | 2.1 ms (**52×**) |
+
+### Automatic engine selection: `rg.visibility(...)`
+
+A single entry point picks the engine for the scenario, and `explain=True` shows
+which one it chose:
+
+```python
+import rustygraph as rg
+e = rg.visibility(y)                        # 1-D: Rust; natural VG picks scan or hull automatically
+e, off = rg.visibility(Y)                   # (B, n): parallel batch of independent series
+e = rg.visibility(X, "vvg")                 # (T, d): vector visibility graph
+e, off = rg.visibility(W, "vvg")            # (B, w, d): batch of multivariate windows
+e, off = rg.visibility(X, "multiplex")      # one layer per variable
+A = rg.visibility(X, "average", output="adjacency")    # layers averaged into one weighted graph
+A = rg.visibility(x_torch.requires_grad_(), output="adjacency")  # differentiable soft VG
+A = rg.visibility(x_on_mps, output="adjacency")        # exact VG on the GPU, stays on device
+res, plan = rg.visibility(y, explain=True)  # e.g. {'engine': 'rust', 'algorithm': 'hull', 'scan_work': ...}
+```
+
+**Natural VG engine choice.** Before building anything, RustyGraph computes the
+exact scan cost W = Σ|segment| in O(n).
+- If scanning is cheap (W ≤ 30·n·log₂n), it runs the parallel divide & conquer scan.
+- Otherwise it builds a segment tree of upper convex hulls. Long, sparse scans are
+  handed over to "next record" queries: the next visible point is the nearest one
+  whose linear functional exceeds a threshold, found in O(log² n) on the hulls.
+- Every query tracks its own cost and hands back to linear scanning when the hull
+  bound stops pruning (e.g. on noisy convex curves).
+- The leaf decision uses the same cross-multiplication test as the scan, so every
+  engine returns identical edges.
+- The worst case falls from O(n²) to O((n + E) log² n). For example, √t with n = 100k
+  goes from 988 ms (scan) and 24 s (ts2vg) to 30 ms.
+- Force an engine with `natural_visibility_edges(y, algorithm="scan"|"hull")`;
+  inspect the choice with `natural_visibility_plan(y)`.
+
+### Streaming (autoregressive generation)
+
+```python
+s = rg.VisibilityStream("natural", window=64)      # or horizontal / vector_natural(dim=d) / vector_horizontal
+for v in generated_values:
+    sources = s.push(v)          # new edges (source, len(s)-1)
+edges = s.extend(values)         # bulk push, returns (E, 2)
+```
+
+Visibility between two points depends only on the points between them, so each
+push only adds edges to the new node, and a sliding window is a restriction of
+the sources. Engines:
+- **Natural:** backward scan, with a logarithmic set of hull trees for long
+  histories (`mode="auto"|"scan"|"indexed"`).
+- **Horizontal:** monotone stack, O(1) amortised per push.
+- **Vector:** each earlier point keeps its steepest slope seen so far, because the
+  projection axis depends on the earlier point.
+
+### Visibility-graph fidelity metrics for synthetic time series
+
+```python
+res = rg.vg_fidelity(real, synthetic, window=64)   # (T,), (T, N) or (B, w, N)
+res["vg_divergence"], res["baseline_vg_divergence"]  # mean JSD vs a real-vs-real noise floor
+```
+
+Value-distribution metrics (moments, Wasserstein, KS, MMD) cannot see temporal
+order: a time-shuffled copy of the data scores perfectly on all of them.
+`vg_fidelity` compares:
+- natural- and horizontal-VG degree distributions;
+- size-4 sequential motif profiles (`rg.visibility_motifs`, O(n), no graph is
+  built; Iacovacci & Lacasa 2016);
+- directed-HVG time irreversibility (Lacasa et al. 2012);
+- a temporal-structure index against the exact finite-size i.i.d. null;
+- for multivariate data: vector-VG degrees and motifs, plus multiplex edge overlap
+  and interlayer mutual information (Lacasa, Nicosia & Latora 2015).
+
+It also reports a split-half baseline, so you can tell what is sampling noise.
+Example: an AR(1) process against a fresh sample of the same process scores 0.0006
+(baseline 0.0007). A time-shuffled copy, whose value distribution is identical,
+scores 0.0756.
+
+### PyTorch: differentiable and on-GPU visibility graphs (`pip install pyrustygraph[torch]`)
+
+`rg.soft_visibility(x, kind, tau)` relaxes the visibility test with log-sigmoid
+margins. It is differentiable with respect to the series and to `tau`, and it
+converges to the exact graph as τ → 0. `rg.exact_visibility` is a batched, exact
+dense version that runs on CUDA or MPS (bit-identical to Rust in float64).
+`rg.VisibilityLayer` is an `nn.Module` that is soft during training and exact
+otherwise, with an optional learnable τ. `soft_degree_histogram` lets you train a
+generator against real VG degree statistics.
+
+### Multivariate: vector visibility graphs
+
+`natural_vector_visibility_edges(X)` and `horizontal_vector_visibility_edges(X)`
+build the vector visibility graph (Ren & Jin, 2019) of `X` with shape
+(time, features). The semantics are those of `vector-vis-graph`: for a < b, every
+vector is projected onto the direction of x_a, and the univariate criterion is
+applied to the projections. The same six weight methods are available. The scan
+stops early using a Cauchy–Schwarz bound (p_k ≤ ‖x_k‖) that provably never drops
+an edge. Output is identical to `vector-vis-graph` 0.8.1 on 4,500 random graphs
+and 3,245 real exchange-rate windows. Speed vs `vector-vis-graph` (numba,
+all cores):
+
+| Workload | vector-vis-graph | RustyGraph (10 threads) |
+|---|---|---|
+| n=1,000, d=8 | 33 ms | 0.31 ms (**107×**) |
+| n=5,000, d=8, random walk | 3.70 s | 1.08 ms (**3,430×**) |
+| n=10,000, d=36, random walk | 55.1 s | 16.4 ms (**3,364×**) |
+| n=2,000, d=64 | 256 ms | 8.9 ms (**29×**) |
+| 1,000 windows 23×36, `natural_vector_visibility_batch` | 2.30 s | 3.2 ms (**728×**) |
+
+Zero vectors have no direction. RustyGraph treats their projections as 0, so the
+point sees only its successor; `vector-vis-graph` yields NaN and connects the
+point to everything.
+
+Fastest Python path: `natural_visibility_edges(y)` returns an `(E, 2)` int64
+NumPy array with the GIL released; `natural_visibility_batch(Y)` handles many
+windows in one call. The `VisibilityGraph` object API adds hash-map and
+adjacency construction and is about 2–2.7× faster than ts2vg.
 
 ## Current Status & Roadmap
 
@@ -310,7 +442,7 @@ impl Feature<f64> for RangeFeature {
 ### ✅ Completed Features
 
 #### Core Implementation (v0.1.0)
-- ✅ **Natural visibility algorithm** - O(n) monotonic stack with collinear handling
+- ✅ **Natural visibility algorithm** - exact divide & conquer (strict visibility: collinear points block)
 - ✅ **Horizontal visibility algorithm** - Efficient linear scan
 - ✅ **Weighted graphs** - Custom edge weight functions
 - ✅ **10 Built-in features** - All temporal, statistical, and extrema features
@@ -638,7 +770,7 @@ The library is **ready for production use** in:
 Pre-built wheels are automatically published for Linux, macOS, and Windows:
 
 ```bash
-pip install rustygraph
+pip install pyrustygraph   # import name: rustygraph
 ```
 
 Supports Python 3.9+ on:
@@ -663,6 +795,20 @@ python -c "import rustygraph as rg; print(rg.__version__)"
 > **Note for Maintainers**: Python packages are automatically built and published to PyPI via GitHub Actions. See [`.github/workflows/README.md`](.github/workflows/README.md) for details.
 
 ### Quick Python Example
+
+```python
+import numpy as np
+import rustygraph as rg
+
+# Fast path: edges straight into NumPy (GIL released, parallel for large n)
+y = np.random.randn(100_000)
+edges = rg.natural_visibility_edges(y)          # (E, 2) int64, rows (a, b), a < b
+hedges = rg.horizontal_visibility_edges(y)
+
+# Many windows at once (e.g. sliding windows for a GNN)
+Y = np.random.randn(10_000, 23)
+e, off = rg.natural_visibility_batch(Y)          # edges of window k: e[off[k]:off[k+1]]
+```
 
 ```python
 import rustygraph as rg
