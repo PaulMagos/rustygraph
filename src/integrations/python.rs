@@ -129,6 +129,35 @@ impl PyTimeSeries {
             .map_err(py_error_helpers::to_value_error)?;
         Ok(Self { inner })
     }
+
+    /// Load a time series from CSV text, selecting columns by header name.
+    #[staticmethod]
+    fn from_csv_string(csv: &str, time_col: &str, value_col: &str) -> PyResult<Self> {
+        let header = csv.lines().next().unwrap_or_default();
+        let cols: Vec<&str> = header.split(',').map(str::trim).collect();
+        let find = |name: &str| {
+            cols.iter().position(|c| *c == name).ok_or_else(|| {
+                pyo3::exceptions::PyValueError::new_err(format!("column '{name}' not found in header {cols:?}"))
+            })
+        };
+        let options = crate::CsvImportOptions {
+            has_header: true,
+            timestamp_column: Some(find(time_col)?),
+            value_column: find(value_col)?,
+            ..Default::default()
+        };
+        let inner = RustTimeSeries::from_csv_string(csv, options)
+            .map_err(py_error_helpers::to_value_error)?;
+        Ok(Self { inner })
+    }
+
+    /// Load a time series from a CSV file, selecting columns by header name.
+    #[staticmethod]
+    fn from_csv_file(path: &str, time_col: &str, value_col: &str) -> PyResult<Self> {
+        let text = std::fs::read_to_string(path)
+            .map_err(|e| pyo3::exceptions::PyIOError::new_err(format!("{path}: {e}")))?;
+        Self::from_csv_string(&text, time_col, value_col)
+    }
 }
 
 /// Python wrapper for MissingDataStrategy.
@@ -260,9 +289,11 @@ impl PyVisibilityGraph {
     
     /// Returns edges as a list of tuples (source, target, weight).
     fn edges(&self) -> Vec<(usize, usize, f64)> {
-        self.inner.edges().iter()
+        let mut e: Vec<(usize, usize, f64)> = self.inner.edges().iter()
             .map(|(&(src, dst), &weight)| (src, dst, weight))
-            .collect()
+            .collect();
+        e.sort_unstable_by_key(|&(a, b, _)| (a, b));
+        e
     }
     
     /// Returns the adjacency matrix as a NumPy array.
@@ -801,11 +832,12 @@ impl PyFeatureSet {
 /// Standalone function to create natural visibility graph from array
 #[cfg(feature = "python-bindings")]
 #[pyfunction]
-fn natural_visibility(values: Vec<f64>) -> PyResult<PyVisibilityGraph> {
+fn natural_visibility(py: Python<'_>, values: &Bound<'_, PyAny>) -> PyResult<PyVisibilityGraph> {
+    let values = crate::integrations::python_fast::to_f64(values)?.as_slice().to_vec();
     let series = RustTimeSeries::from_raw(values)
         .map_err(py_error_helpers::to_value_error)?;
-    let graph = crate::VisibilityGraph::from_series(&series)
-        .natural_visibility()
+    let graph = py
+        .allow_threads(|| crate::VisibilityGraph::from_series(&series).natural_visibility())
         .map_err(py_error_helpers::to_runtime_error)?;
     Ok(PyVisibilityGraph { inner: graph })
 }
@@ -813,11 +845,12 @@ fn natural_visibility(values: Vec<f64>) -> PyResult<PyVisibilityGraph> {
 /// Standalone function to create horizontal visibility graph from array
 #[cfg(feature = "python-bindings")]
 #[pyfunction]
-fn horizontal_visibility(values: Vec<f64>) -> PyResult<PyVisibilityGraph> {
+fn horizontal_visibility(py: Python<'_>, values: &Bound<'_, PyAny>) -> PyResult<PyVisibilityGraph> {
+    let values = crate::integrations::python_fast::to_f64(values)?.as_slice().to_vec();
     let series = RustTimeSeries::from_raw(values)
         .map_err(py_error_helpers::to_value_error)?;
-    let graph = crate::VisibilityGraph::from_series(&series)
-        .horizontal_visibility()
+    let graph = py
+        .allow_threads(|| crate::VisibilityGraph::from_series(&series).horizontal_visibility())
         .map_err(py_error_helpers::to_runtime_error)?;
     Ok(PyVisibilityGraph { inner: graph })
 }
@@ -835,6 +868,8 @@ fn _rustygraph(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<PyMotifCounts>()?;
     m.add_function(wrap_pyfunction!(natural_visibility, m)?)?;
     m.add_function(wrap_pyfunction!(horizontal_visibility, m)?)?;
+    crate::integrations::python_fast::register(m)?;
+    crate::integrations::python_extra::register(m)?;
     Ok(())
 }
 
