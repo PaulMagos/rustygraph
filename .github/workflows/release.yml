@@ -95,6 +95,7 @@ jobs:
     needs: detect
     if: needs.detect.outputs.version != ''
     strategy:
+      fail-fast: false
       matrix:
         include:
         - { os: ubuntu-latest, target: x86_64 }
@@ -154,7 +155,7 @@ jobs:
         MATURIN_PYPI_TOKEN: ${{ secrets.PYPI_API_TOKEN }}
 
   crates:
-    needs: [detect, test]
+    needs: [detect, test, wheels, sdist]
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v4

@@ -4,11 +4,11 @@
 //! on Apple Silicon GPUs, leveraging the unified memory architecture and
 //! Neural Engine capabilities.
 
-#[cfg(target_os = "macos")]
+#[cfg(all(target_os = "macos", target_arch = "aarch64"))]
 use metal::*;
 
 /// Metal compute pipeline for visibility graph construction
-#[cfg(target_os = "macos")]
+#[cfg(all(target_os = "macos", target_arch = "aarch64"))]
 pub struct MetalVisibilityPipeline {
     device: Device,
     command_queue: CommandQueue,
