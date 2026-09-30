@@ -4,7 +4,7 @@ build-backend = "maturin"
 
 [project]
 name = "pyrustygraph"
-version = "0.5.0"
+version = "0.5.1"
 description = "High-performance visibility graph computation for time series analysis"
 readme = "README.md"
 requires-python = ">=3.9"

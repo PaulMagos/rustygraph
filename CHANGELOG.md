@@ -5,7 +5,19 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [0.5.0] - Unreleased
+## [0.5.1] - 2026-09-30
+
+### Fixed
+- Build on Intel macOS (`x86_64-apple-darwin`): `MetalVisibilityPipeline` was
+  defined twice there (Metal struct gated on `macos`, stub on
+  `not(macos + aarch64)`). The Metal backend is now gated on Apple Silicon only,
+  consistently. The crates.io 0.5.0 release does not compile on Intel Macs; use 0.5.1.
+
+### Changed
+- Release workflow publishes to crates.io only after every wheel builds, and
+  wheel builds no longer cancel each other on a single failure.
+
+## [0.5.0] - 2026-09-30 (crates.io only)
 
 ### Added (dynamic engines, streaming, metrics, PyTorch)
 - **Output-sensitive natural VG** (`algorithms::hull`): segment tree of upper

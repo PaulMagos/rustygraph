@@ -3,7 +3,7 @@
 | Workflow | Trigger | What it does |
 |---|---|---|
 | `rust.yml` | push / PR to `main` | `cargo build` + `cargo test` |
-| `release.yml` | push to `main`, manual | Releases when the version prefix rule matches (below) |
+| `release.yml` | push / PR to `main`, manual | On PRs: dry run (tests + every wheel, no publishing). On `main`: releases when the version prefix rule matches (below) |
 
 ## Releasing
 
@@ -29,8 +29,8 @@ Steps:
      `v0.5.1` does not exist yet (otherwise it fails with an explicit error);
    - runs `cargo test --release`;
    - builds wheels (Linux x86_64/aarch64, macOS arm64/x86_64, Windows x64) and the sdist;
-   - uploads to PyPI (`pyrustygraph`) and publishes the crate to crates.io (`rustygraph`),
-     skipping either if that version already exists there;
+   - only if every build succeeded: uploads to PyPI (`pyrustygraph`) and publishes the crate
+     to crates.io (`rustygraph`), skipping either if that version already exists there;
    - creates tag `v0.5.1` and a GitHub Release with generated notes and the built wheels.
 
 Manual release: Actions → Release → Run workflow → enter the version.
