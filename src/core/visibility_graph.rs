@@ -65,7 +65,7 @@ pub struct VisibilityGraph<T> {
     /// Number of nodes (data points)
     pub node_count: usize,
     /// Graph edges as (source, target) pairs
-    pub(crate) edges: HashMap<(usize, usize), f64>,
+    pub(crate) edges: crate::core::algorithms::fast::EdgeMap,
     /// Adjacency list representation
     adjacency: Vec<Vec<f64>>,
     /// Computed features for each node
@@ -134,7 +134,7 @@ impl<T> VisibilityGraph<T> {
     ///     println!("{} -> {}: {}", src, dst, weight);
     /// }
     /// ```
-    pub fn edges(&self) -> &HashMap<(usize, usize), f64> {
+    pub fn edges(&self) -> &crate::core::algorithms::fast::EdgeMap {
         &self.edges
     }
 
@@ -311,8 +311,11 @@ impl<T> VisibilityGraph<T> {
     /// ```
     pub fn to_adjacency_matrix(&self) -> Vec<Vec<f64>> {
         let mut matrix = vec![vec![0.0; self.node_count]; self.node_count];
-        for &(src, dst) in self.edges.keys() {
-            matrix[src][dst] = self.edges[&(src, dst)];
+        for (&(src, dst), &w) in &self.edges {
+            matrix[src][dst] = w;
+            if !self.directed {
+                matrix[dst][src] = w;
+            }
         }
         matrix
     }
@@ -406,7 +409,9 @@ where
     ///
     /// # Algorithm
     ///
-    /// Uses a monotonic stack optimization for O(n) complexity per node.
+    /// Exact divide & conquer on the maximum, O(n log n) on average; see
+    /// [`crate::algorithms::fast`]. Missing or non-finite points are treated as
+    /// absent (no edges, do not block); timestamps are used as positions.
     ///
     /// # Errors
     ///
@@ -441,7 +446,7 @@ where
 
         // Compute edges using natural visibility algorithm
         // Use parallel computation when available (significant speedup for large graphs)
-        let edges: HashMap<(usize, usize), f64> = {
+        let edges: crate::core::algorithms::fast::EdgeMap = {
             let edge_computer = create_visibility_edges::new(
                 self.series,
                 VisibilityType::Natural,
@@ -486,7 +491,7 @@ where
     ///
     /// # Algorithm
     ///
-    /// Uses a linear scan approach with O(n) average case complexity.
+    /// O(n) monotone stack. Missing or non-finite points are treated as absent.
     ///
     /// # Errors
     ///
@@ -521,7 +526,7 @@ where
 
         // Compute edges using horizontal visibility algorithm
         // Use parallel computation when available (significant speedup for large graphs)
-        let edges: HashMap<(usize, usize), f64> = {
+        let edges: crate::core::algorithms::fast::EdgeMap = {
             let edge_computer = create_visibility_edges::new(
                 self.series,
                 VisibilityType::Horizontal,
@@ -589,10 +594,16 @@ impl fmt::Display for GraphError {
 }
 
 
-fn build_adjacency_list(node_count: usize, edges: &HashMap<(usize, usize), f64>, directed: bool) -> Vec<Vec<f64>> {
-    let mut adjacency = vec![Vec::new(); node_count];
+fn build_adjacency_list(node_count: usize, edges: &crate::core::algorithms::fast::EdgeMap, directed: bool) -> Vec<Vec<f64>> {
+    let mut degree = vec![0usize; node_count];
     for &(src, dst) in edges.keys() {
-        let weight = edges.get(&(src, dst)).copied().unwrap_or(0.0);
+        degree[src] += 1;
+        if !directed {
+            degree[dst] += 1;
+        }
+    }
+    let mut adjacency: Vec<Vec<f64>> = degree.into_iter().map(Vec::with_capacity).collect();
+    for (&(src, dst), &weight) in edges {
         adjacency[src].push(weight);
         if !directed {
             adjacency[dst].push(weight); // Add reverse edge for undirected

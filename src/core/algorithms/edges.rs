@@ -56,7 +56,6 @@
 /// # Returns
 ///
 /// Hashmap of edges as (source, target) pairs with weights
-use std::collections::HashMap;
 use crate::core::TimeSeries;
 
 /// Visibility graph algorithm type.
@@ -128,7 +127,7 @@ where
     ///
     /// # Returns
     ///
-    /// `HashMap<(usize, usize), f64>` where keys are `(source, target)` node indices
+    /// `super::fast::EdgeMap` where keys are `(source, target)` node indices
     /// and values are edge weights computed by the weight function.
     ///
     /// # Examples
@@ -145,300 +144,88 @@ where
     ///
     /// println!("Found {} edges", edges.len());
     /// ```
-    pub fn compute_edges(&self) -> HashMap<(usize, usize), f64> {
+    pub fn compute_edges(&self) -> super::fast::EdgeMap {
+        self.compute(false)
+    }
 
-        // Sequential implementation with O(n) envelope optimization
-        let mut edges = HashMap::new();
-        let mut stack: Vec<usize> = Vec::new();
+    /// Runs the fast kernel on the valid (present, finite) points and applies
+    /// the weight function.
+    ///
+    /// Missing (`None`) and non-finite points are treated as absent: they get
+    /// no edges and do not block visibility. Positions are the series
+    /// timestamps when they are finite and strictly increasing, otherwise the
+    /// sample indices.
+    fn compute(&self, parallel: bool) -> super::fast::EdgeMap {
+        use super::fast::{self, Explicit, Uniform};
 
-        // Process each point in the series
-        for i in 0..self.series.len() {
-            // Update the envelope stack based on visibility rule
-            self.update_envelope(&mut stack, i);
-
-            // Add visible edges from points in the stack to point i
-            self.add_visible_edges(&mut edges, &stack, i);
-
-            // Push the current point onto the stack
-            stack.push(i);
+        let values = &self.series.values;
+        let mut idx: Vec<usize> = Vec::with_capacity(values.len());
+        let mut y: Vec<f64> = Vec::with_capacity(values.len());
+        for (i, v) in values.iter().enumerate() {
+            if let Some(v) = v {
+                let f: f64 = (*v).into();
+                if f.is_finite() {
+                    idx.push(i);
+                    y.push(f);
+                }
+            }
         }
 
-        // Return the computed edges
+        let ts: Vec<f64> = self.series.timestamps.iter().map(|&t| t.into()).collect();
+        let ts_ok = ts.len() == values.len()
+            && ts.iter().all(|t| t.is_finite())
+            && ts.windows(2).all(|w| w[1] > w[0]);
+        let dense = idx.len() == values.len();
+        let unit = ts_ok && ts.iter().enumerate().all(|(i, &t)| t == i as f64);
+
+        let raw = match self.rule {
+            VisibilityType::Horizontal => fast::horizontal_edges(&y),
+            VisibilityType::Natural => {
+                if dense && (unit || !ts_ok) {
+                    run_natural(&y, &Uniform, parallel)
+                } else {
+                    let x: Vec<f64> = if ts_ok {
+                        idx.iter().map(|&i| ts[i]).collect()
+                    } else {
+                        idx.iter().map(|&i| i as f64).collect()
+                    };
+                    run_natural(&y, &Explicit(&x), parallel)
+                }
+            }
+        };
+
+        let mut edges = super::fast::EdgeMap::with_capacity_and_hasher(raw.len(), Default::default());
+        for (a, b) in raw {
+            let (src, dst) = (idx[a as usize], idx[b as usize]);
+            let (vs, vd) = (values[src].unwrap(), values[dst].unwrap());
+            edges.insert((src, dst), (self.weight_fn)(src, dst, vs, vd));
+        }
         edges
     }
-
-    fn update_envelope(&self, stack: &mut Vec<usize>, i: usize) {
-        // Only update envelope for natural visibility
-        if !matches!(self.rule, VisibilityType::Natural) {
-            return;
-        }
-
-        // Maintain the upper envelope stack
-        // Remove points that are dominated by the convex hull
-        while stack.len() >= 2 {
-            let j = *stack.last().unwrap();
-            let k = stack[stack.len() - 2];
-
-            // Check if point j should be popped from the envelope
-            if self.should_pop(k, j, i) {
-                stack.pop();
-            } else {
-                break;
-            }
-        }
-    }
-
-    // Adds visible edges from points in the stack to point i
-    fn add_visible_edges(
-        &self,
-        edges: &mut HashMap<(usize, usize), f64>,
-        stack: &[usize],
-        i: usize,
-    ) {
-        // Check visibility from each point in the stack to point i
-        for &j in stack.iter().rev() {
-            if self.is_visible(j, i) {
-                // Unwrap is safe here as we only process non-None values
-                let vj = self.series.values[j].unwrap();
-                let vi = self.series.values[i].unwrap();
-                let w = (self.weight_fn)(j, i, vj, vi);
-                edges.insert((j, i), w);
-            } else if matches!(self.rule, VisibilityType::Horizontal) {
-                break;
-            }
-        }
-    }
-
-    // Determines if the point at index j is visible from point i based on the visibility rule
-    fn is_visible(&self, j: usize, i: usize) -> bool {
-        match self.rule {
-            VisibilityType::Natural => self.is_visible_natural(j, i),
-            VisibilityType::Horizontal => self.is_visible_horizontal(j, i),
-        }
-    }
-
-    // Determines if the point at index j is visible from point i in natural visibility
-    fn is_visible_natural(&self, j: usize, i: usize) -> bool {
-        let vj: f64 = self.series.values[j].unwrap().into();
-        let vi: f64 = self.series.values[i].unwrap().into();
-
-        // Use SIMD optimization when available and beneficial (x86_64 AVX2 or ARM NEON)
-        #[cfg(all(feature = "simd", any(target_arch = "x86_64", target_arch = "aarch64")))]
-        {
-            if i - j > 8 {
-                // Collect intermediate values for SIMD processing
-                let intermediate: Vec<f64> = (j + 1..i)
-                    .map(|k| self.series.values[k].unwrap().into())
-                    .collect();
-                return crate::performance::simd::SimdOps::is_visible_natural_simd(
-                    vj, vi, &intermediate, j, i
-                );
-            }
-        }
-
-        // Standard scalar implementation
-        (j + 1..i).all(|k| {
-            let vk: f64 = self.series.values[k].unwrap().into();
-            let line_height = vj + (vi - vj) * ((k - j) as f64 / (i - j) as f64);
-            vk < line_height
-        })
-    }
-
-
-    // Determines if the point at index j is visible from point i in horizontal visibility
-    fn is_visible_horizontal(&self, j: usize, i: usize) -> bool {
-        let vj = self.series.values[j].unwrap();
-        let vi = self.series.values[i].unwrap();
-        let min_h = if vj < vi { vj } else { vi };
-
-        // Use SIMD optimization when available and beneficial (x86_64 AVX2 or ARM NEON)
-        #[cfg(all(feature = "simd", any(target_arch = "x86_64", target_arch = "aarch64")))]
-        {
-            if i - j > 8 {
-                let intermediate: Vec<f64> = (j + 1..i)
-                    .map(|k| self.series.values[k].unwrap().into())
-                    .collect();
-                return crate::performance::simd::SimdOps::is_visible_horizontal_simd(
-                    vj.into(), vi.into(), &intermediate
-                );
-            }
-        }
-
-        // Standard scalar implementation
-        (j + 1..i).all(|k| self.series.values[k].unwrap() < min_h)
-    }
-
-    // Determines if the point at index j should be popped from the envelope stack
-    //
-    // For natural visibility graphs, we can only safely remove point j if:
-    // 1. Point j cannot see point i (blocked by the line from k to i), AND
-    // 2. Point j will be blocked from seeing ALL future points beyond i
-    //
-    // IMPORTANT: We must NEVER remove j if it's adjacent to i (j+1 == i),
-    // because adjacent points always have visibility (no intermediate points to block).
-    fn should_pop(&self, k: usize, j: usize, i: usize) -> bool {
-        // Safety check: NEVER remove a node that's adjacent to the current node
-        if self.is_adjacent(j, i) {
-            return false;
-        }
-
-        let (vk, vj, vi) = self.get_values(k, j, i);
-        let (tk, tj, ti) = (k as f64, j as f64, i as f64);
-
-        let expected_height = self.calculate_expected_height(vk, vi, tk, tj, ti);
-
-        if vj < expected_height {
-            self.is_permanently_shadowed(vk, vj, vi, tk, tj, ti)
-        } else {
-            false
-        }
-    }
-
-    /// Check if two indices are adjacent
-    fn is_adjacent(&self, j: usize, i: usize) -> bool {
-        j + 1 >= i
-    }
-
-    /// Get values for three indices
-    fn get_values(&self, k: usize, j: usize, i: usize) -> (f64, f64, f64) {
-        (
-            self.series.values[k].unwrap().into(),
-            self.series.values[j].unwrap().into(),
-            self.series.values[i].unwrap().into(),
-        )
-    }
-
-    /// Calculate expected height of line from k to i at position j
-    fn calculate_expected_height(&self, vk: f64, vi: f64, tk: f64, tj: f64, ti: f64) -> f64 {
-        vk + (vi - vk) * ((tj - tk) / (ti - tk))
-    }
-
-    /// Check if point j is in a permanently shadowed position
-    fn is_permanently_shadowed(&self, vk: f64, vj: f64, vi: f64, tk: f64, tj: f64, ti: f64) -> bool {
-        let slope_kj = (vj - vk) / (tj - tk);
-        let slope_ki = (vi - vk) / (ti - tk);
-        slope_kj < slope_ki
-    }
 }
+
+fn run_natural<P: super::fast::Positions>(y: &[f64], pos: &P, parallel: bool) -> Vec<super::fast::Edge> {
+    #[cfg(feature = "parallel")]
+    {
+        if parallel {
+            return super::fast::natural_edges(y, pos);
+        }
+    }
+    let _ = parallel;
+    super::fast::natural_edges_seq(y, pos)
+}
+
 /// Parallel edge computation (when parallel feature is enabled).
-///
-/// This implementation splits the work of computing edges across multiple threads,
-/// providing significant speedup for large graphs.
 #[cfg(feature = "parallel")]
 impl<'a, T, F> VisibilityEdges<'a, T, F>
 where
     T: Copy + PartialOrd + Into<f64> + Send + Sync,
     F: Fn(usize, usize, T, T) -> f64 + Send + Sync,
 {
-    /// Computes edges in parallel using Rayon with O(n) envelope optimization per chunk.
-    ///
-    /// This method processes chunks of the time series in parallel, using the
-    /// O(n) envelope optimization within each chunk for efficiency.
-    ///
-    /// # Strategy
-    ///
-    /// - Splits the series into chunks (one per thread)
-    /// - Each chunk uses the sequential O(n) envelope algorithm
-    /// - Results are merged at the end
-    ///
-    /// # Performance
-    ///
-    /// Expected speedup: 2-4x on multi-core systems (4-8 cores)
-    /// Complexity: O(n²/p) where p is the number of threads
-    ///
-    /// # Returns
-    ///
-    /// HashMap of edges with weights, same as sequential version
-    pub fn compute_edges_parallel(&self) -> HashMap<(usize, usize), f64> {
-        let n = self.series.len();
-        if self.should_use_sequential(n) {
-            return self.compute_edges();
-        }
-
-        let chunk_results = self.process_chunks_in_parallel(n);
-        self.merge_chunk_results(chunk_results)
-    }
-
-    /// Check if sequential processing is better for small graphs
-    fn should_use_sequential(&self, n: usize) -> bool {
-        n <= 100
-    }
-
-    /// Process chunks in parallel
-    fn process_chunks_in_parallel(&self, n: usize) -> Vec<HashMap<(usize, usize), f64>> {
-        use rayon::prelude::*;
-
-        (0..n)
-            .collect::<Vec<_>>()
-            .par_chunks(64)
-            .map(|target_chunk| self.process_target_chunk(target_chunk))
-            .collect()
-    }
-
-    /// Process a single chunk of target nodes
-    fn process_target_chunk(&self, target_chunk: &[usize]) -> HashMap<(usize, usize), f64> {
-        let mut local_edges = HashMap::new();
-
-        for &i in target_chunk {
-            let stack = self.build_envelope_stack_for_target(i);
-            self.add_visible_edges_from_stack(&mut local_edges, &stack, i);
-        }
-
-        local_edges
-    }
-
-    /// Build envelope stack for a target node
-    fn build_envelope_stack_for_target(&self, target: usize) -> Vec<usize> {
-        let mut stack = Vec::new();
-
-        for j in 0..target {
-            self.update_envelope_for_parallel(&mut stack, j);
-            stack.push(j);
-        }
-
-        stack
-    }
-
-    /// Update envelope during parallel processing
-    fn update_envelope_for_parallel(&self, stack: &mut Vec<usize>, j: usize) {
-        if matches!(self.rule, VisibilityType::Natural) {
-            while stack.len() >= 2 {
-                let prev_j = *stack.last().unwrap();
-                let prev_k = stack[stack.len() - 2];
-                if self.should_pop(prev_k, prev_j, j) {
-                    stack.pop();
-                } else {
-                    break;
-                }
-            }
-        }
-    }
-
-    /// Add visible edges from stack to target node
-    fn add_visible_edges_from_stack(
-        &self,
-        edges: &mut HashMap<(usize, usize), f64>,
-        stack: &[usize],
-        target: usize,
-    ) {
-        for &j in stack.iter().rev() {
-            if self.is_visible(j, target) {
-                let vj = self.series.values[j].unwrap();
-                let vi = self.series.values[target].unwrap();
-                let w = (self.weight_fn)(j, target, vj, vi);
-                edges.insert((j, target), w);
-            } else if matches!(self.rule, VisibilityType::Horizontal) {
-                break;
-            }
-        }
-    }
-
-    /// Merge results from all chunks
-    fn merge_chunk_results(&self, chunk_results: Vec<HashMap<(usize, usize), f64>>) -> HashMap<(usize, usize), f64> {
-        let mut edges = HashMap::new();
-        for chunk_edges in chunk_results {
-            edges.extend(chunk_edges);
-        }
-        edges
+    /// Computes edges, running the natural-visibility kernel in parallel for
+    /// large series (see [`super::fast::PARALLEL_THRESHOLD`]). Output is
+    /// identical to [`Self::compute_edges`].
+    pub fn compute_edges_parallel(&self) -> super::fast::EdgeMap {
+        self.compute(true)
     }
 }

@@ -2,9 +2,15 @@
 //!
 //! This module contains the fundamental algorithms for computing visibility graphs
 //! from time series data. Both natural and horizontal visibility algorithms are
-//! implemented with O(n) time complexity using optimized data structures.
+//! implemented on top of the kernels in [`fast`]: natural visibility in O(n log n)
+//! average time (divide & conquer on the maximum), horizontal visibility in O(n).
 
 pub mod edges;
+pub mod fast;
+pub mod hull;
+pub mod motifs;
+pub mod stream;
+pub mod vector;
 
 pub use self::edges::{VisibilityEdges, VisibilityType};
 
@@ -12,7 +18,7 @@ use crate::core::TimeSeries;
 
 /// Computes natural visibility edges with default unweighted (weight=1.0) edges.
 ///
-/// Uses O(n) envelope optimization for efficiency.
+/// See [`fast`] for the algorithm.
 pub fn natural_visibility<T>(series: &TimeSeries<T>) -> Vec<(usize, usize, f64)>
 where
     T: Copy + PartialOrd + Into<f64>,
@@ -24,13 +30,13 @@ where
 
 /// Computes natural visibility edges in parallel (requires `parallel` feature).
 ///
-/// Uses O(n) envelope optimization within each parallel chunk for better efficiency
-/// than the naive O(n²) parallel approach.
+/// Runs the kernel in parallel for series longer than
+/// [`fast::PARALLEL_THRESHOLD`]; output equals the sequential version.
 ///
 /// # Performance
 ///
 /// Best for large graphs (>1000 nodes) on multi-core systems.
-/// Expected speedup: 2-4x on 4-8 cores.
+/// Scales with cores on long series (≈4–5× on 10 cores for 10⁶ points).
 ///
 /// # Example
 ///
@@ -53,7 +59,7 @@ where
 
 /// Computes horizontal visibility edges with default unweighted (weight=1.0) edges.
 ///
-/// Uses O(n) envelope optimization for efficiency.
+/// See [`fast`] for the algorithm.
 pub fn horizontal_visibility<T>(series: &TimeSeries<T>) -> Vec<(usize, usize, f64)>
 where
     T: Copy + PartialOrd + Into<f64>,
@@ -65,13 +71,13 @@ where
 
 /// Computes horizontal visibility edges in parallel (requires `parallel` feature).
 ///
-/// Uses O(n) envelope optimization within each parallel chunk for better efficiency
-/// than the naive O(n²) parallel approach.
+/// Runs the kernel in parallel for series longer than
+/// [`fast::PARALLEL_THRESHOLD`]; output equals the sequential version.
 ///
 /// # Performance
 ///
 /// Best for large graphs (>1000 nodes) on multi-core systems.
-/// Expected speedup: 2-4x on 4-8 cores.
+/// Scales with cores on long series (≈4–5× on 10 cores for 10⁶ points).
 #[cfg(feature = "parallel")]
 pub fn horizontal_visibility_parallel<T>(series: &TimeSeries<T>) -> Vec<(usize, usize, f64)>
 where
@@ -92,12 +98,12 @@ where
 ///
 /// # Returns
 ///
-/// HashMap of edges with their weights
+/// Map of edges with their weights
 pub fn visibility_weighted<T, F>(
     series: &TimeSeries<T>,
     visibility_type: VisibilityType,
     weight_fn: F,
-) -> std::collections::HashMap<(usize, usize), f64>
+) -> fast::EdgeMap
 where
     T: Copy + PartialOrd + Into<f64>,
     F: Fn(usize, usize, T, T) -> f64,
