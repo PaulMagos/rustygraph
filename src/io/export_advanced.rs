@@ -23,6 +23,8 @@
 //! Download and install from https://www.hdfgroup.org/downloads/hdf5/
 
 use crate::core::VisibilityGraph;
+#[cfg(feature = "npy-export")]
+use std::path::Path;
 
 impl<T> VisibilityGraph<T>
 where

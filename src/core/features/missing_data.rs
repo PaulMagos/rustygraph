@@ -309,27 +309,20 @@ impl MissingDataStrategy {
 
     /// Nearest neighbor: use the closest valid value by distance.
     fn handle_nearest_neighbor<T: Copy>(series: &[Option<T>], index: usize) -> Option<T> {
-        let (prev_val, prev_dist) = series[..index]
+        let prev = series[..index]
             .iter()
-            .enumerate()
             .rev()
-            .find_map(|(i, &v)| v.map(|val| (val, index - i)))
-            .unwrap_or((None?, usize::MAX));
+            .enumerate()
+            .find_map(|(offset, &v)| v.map(|val| (val, offset + 1)));
+        let next = series
+            .get(index + 1..)
+            .and_then(|slice| slice.iter().enumerate().find_map(|(offset, &v)| v.map(|val| (val, offset + 1))));
 
-        let (next_val, next_dist) = series.get(index + 1..)
-            .and_then(|slice| {
-                slice.iter()
-                    .enumerate()
-                    .find_map(|(offset, &v)| v.map(|val| (val, offset + 1)))
-            })
-            .unwrap_or((None?, usize::MAX));
-
-        match (prev_dist, next_dist) {
-            (usize::MAX, usize::MAX) => None,
-            (_, usize::MAX) => Some(prev_val),
-            (usize::MAX, _) => Some(next_val),
-            (pd, nd) if pd <= nd => Some(prev_val),
-            _ => Some(next_val),
+        match (prev, next) {
+            (None, None) => None,
+            (Some((p, _)), None) => Some(p),
+            (None, Some((n, _))) => Some(n),
+            (Some((p, pd)), Some((n, nd))) => Some(if pd <= nd { p } else { n }),
         }
     }
 

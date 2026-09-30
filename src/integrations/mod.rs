@@ -13,6 +13,12 @@ pub mod ndarray;
 #[cfg(feature = "python-bindings")]
 pub mod python;
 
+#[cfg(feature = "python-bindings")]
+pub mod python_fast;
+
+#[cfg(feature = "python-bindings")]
+pub mod python_extra;
+
 #[cfg(feature = "burn-integration")]
 pub mod burn;
 

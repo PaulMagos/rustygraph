@@ -465,3 +465,117 @@ def horizontal_visibility(data: NDArray[np.float64]) -> VisibilityGraph:
     """
     ...
 
+
+# ---------------------------------------------------------------------------
+# Fast NumPy endpoints (GIL released while computing)
+# ---------------------------------------------------------------------------
+
+def natural_visibility_edges(
+    y: NDArray[np.float64], x: Optional[NDArray[np.float64]] = None
+) -> NDArray[np.int64]:
+    """
+    Natural visibility edges as an (E, 2) int64 array of rows (a, b), a < b.
+
+    Args:
+        y: 1-D array-like of finite values.
+        x: Optional strictly increasing sample positions (default 0, 1, 2, ...).
+
+    Raises:
+        ValueError: non-finite values, length mismatch or non-increasing x.
+    """
+    ...
+
+def horizontal_visibility_edges(y: NDArray[np.float64]) -> NDArray[np.int64]:
+    """Horizontal visibility edges as an (E, 2) int64 array of rows (a, b), a < b."""
+    ...
+
+def natural_visibility_batch(
+    rows: NDArray[np.float64] | List[NDArray[np.float64]],
+) -> Tuple[NDArray[np.int64], NDArray[np.int64]]:
+    """
+    Natural visibility graphs of many series in parallel.
+
+    Args:
+        rows: (B, n) array, or an iterable of 1-D arrays (ragged lengths allowed).
+
+    Returns:
+        (edges, offsets): edges of series k are edges[offsets[k]:offsets[k+1]],
+        with node indices local to that series.
+    """
+    ...
+
+def horizontal_visibility_batch(
+    rows: NDArray[np.float64] | List[NDArray[np.float64]],
+) -> Tuple[NDArray[np.int64], NDArray[np.int64]]:
+    """Horizontal visibility graphs of many series in parallel; see natural_visibility_batch."""
+    ...
+
+# ---------------------------------------------------------------------------
+# Vector visibility graphs (multivariate; Ren & Jin 2019, vector-vis-graph semantics)
+# ---------------------------------------------------------------------------
+
+def natural_vector_visibility_edges(
+    x: NDArray[np.float64],
+    t: Optional[NDArray[np.float64]] = None,
+    weight: Optional[str] = None,
+) -> NDArray[np.int64] | Tuple[NDArray[np.int64], NDArray[np.float64]]:
+    """
+    Natural vector visibility graph of X with shape (time, features) (1-D = one feature).
+
+    For a < b, all vectors are projected on the direction of x_a and the natural
+    visibility criterion is applied to the projections. Returns (E, 2) int64 edges,
+    or (edges, weights) when `weight` is one of: "cosine_similarity",
+    "time_diff_cosine_similarity", "euclidean_distance", "time_diff_euclidean_distance",
+    "normalized_euclidean_distance", "time_diff_normalized_euclidean_distance".
+    """
+    ...
+
+def horizontal_vector_visibility_edges(
+    x: NDArray[np.float64], weight: Optional[str] = None
+) -> NDArray[np.int64] | Tuple[NDArray[np.int64], NDArray[np.float64]]:
+    """Horizontal vector visibility graph; see natural_vector_visibility_edges."""
+    ...
+
+def natural_vector_visibility_batch(
+    windows: NDArray[np.float64],
+) -> Tuple[NDArray[np.int64], NDArray[np.int64]]:
+    """Natural VVGs of windows with shape (B, time, features), in parallel -> (edges, offsets)."""
+    ...
+
+def horizontal_vector_visibility_batch(
+    windows: NDArray[np.float64],
+) -> Tuple[NDArray[np.int64], NDArray[np.int64]]:
+    """Horizontal VVGs of windows with shape (B, time, features), in parallel -> (edges, offsets)."""
+    ...
+
+# ---------------------------------------------------------------------------
+# Engine selection, streaming, motifs, metrics, dispatcher
+# ---------------------------------------------------------------------------
+
+def natural_visibility_plan(y: NDArray[np.float64]) -> Dict[str, object]:
+    """Engine that natural_visibility_edges(y) would pick: {'algorithm', 'scan_work', 'parallel', 'n'}."""
+    ...
+
+class VisibilityStream:
+    """Online visibility graph; kinds: natural, horizontal, vector_natural, vector_horizontal."""
+
+    def __init__(self, kind: str = "natural", window: Optional[int] = None, dim: Optional[int] = None, mode: str = "auto") -> None: ...
+    def push(self, value: float | NDArray[np.float64], t: Optional[float] = None) -> NDArray[np.int64]:
+        """Append one sample; returns the sources of the new edges."""
+        ...
+    def extend(self, values: NDArray[np.float64], t: Optional[NDArray[np.float64]] = None) -> NDArray[np.int64]:
+        """Append many samples; returns the new edges as (E, 2)."""
+        ...
+    def __len__(self) -> int: ...
+
+def visibility_motifs(x: NDArray[np.float64], kind: str = "natural") -> NDArray[np.uint64]:
+    """Size-4 sequential motif counts, shape (8,) or (B, 8)."""
+    ...
+
+def visibility(data, kind: str = "natural", *, t=None, weight: Optional[str] = None, output: str = "edges",
+               differentiable: Optional[bool] = None, tau: float = 0.1, algorithm: str = "auto", explain: bool = False):
+    """Build a visibility graph with the engine best suited to the input (see rustygraph.auto)."""
+    ...
+
+def vg_descriptors(data, window: Optional[int] = None, max_degree: int = 32, seed: int = 0) -> Dict[str, object]: ...
+def vg_fidelity(real, synth, window: Optional[int] = None, max_degree: int = 32, baseline: bool = True, seed: int = 0) -> Dict[str, float]: ...

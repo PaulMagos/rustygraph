@@ -1,0 +1,193 @@
+name: Release
+
+# A push to main releases when the head commit subject, or the title of the PR
+# it came from, starts with a version: "v0.5.1: ...", "0.6.0 - ...", "v1.0.0-rc.1 ...".
+# The version must equal Cargo.toml and pyproject.toml and not be tagged yet.
+# Then: test -> build wheels + sdist -> PyPI + crates.io -> tag vX.Y.Z + GitHub Release.
+
+on:
+  push:
+    branches: [ "main" ]
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version to release (must match Cargo.toml and pyproject.toml)'
+        required: true
+        type: string
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  detect:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: read
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      prerelease: ${{ steps.version.outputs.prerelease }}
+    steps:
+    - uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+
+    - name: Find version in commit subject or PR title
+      id: version
+      env:
+        GH_TOKEN: ${{ github.token }}
+        INPUT_VERSION: ${{ inputs.version }}
+        SUBJECT: ${{ github.event.head_commit.message }}
+        SHA: ${{ github.sha }}
+        REPO: ${{ github.repository }}
+      run: |
+        set -euo pipefail
+        re='^v?([0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.]+)?)([^0-9A-Za-z.]|$)'
+        pick() { [[ "$1" =~ $re ]] && echo "${BASH_REMATCH[1]}" || true; }
+
+        version=""
+        if [ -n "${INPUT_VERSION:-}" ]; then
+          version=$(pick "$INPUT_VERSION")
+          [ -n "$version" ] || { echo "::error::'$INPUT_VERSION' is not a semantic version"; exit 1; }
+        else
+          version=$(pick "${SUBJECT%%$'\n'*}")
+          if [ -z "$version" ]; then
+            title=$(gh api "repos/$REPO/commits/$SHA/pulls" --jq '.[0].title // ""' 2>/dev/null || true)
+            version=$(pick "$title")
+          fi
+        fi
+
+        if [ -z "$version" ]; then
+          echo "No version prefix: nothing to release."
+          echo "version=" >> "$GITHUB_OUTPUT"
+          exit 0
+        fi
+
+        cargo_v=$(grep -m1 '^version = ' Cargo.toml | cut -d'"' -f2)
+        py_v=$(grep -m1 '^version = ' pyproject.toml | cut -d'"' -f2)
+        if [ "$cargo_v" != "$version" ] || [ "$py_v" != "$version" ]; then
+          echo "::error::Release $version requested but Cargo.toml=$cargo_v, pyproject.toml=$py_v. Run .github/workflows/bump_version.py $version first."
+          exit 1
+        fi
+        if git rev-parse -q --verify "refs/tags/v$version" >/dev/null; then
+          echo "::error::Tag v$version already exists; bump the version."
+          exit 1
+        fi
+
+        echo "Releasing $version"
+        echo "version=$version" >> "$GITHUB_OUTPUT"
+        [[ "$version" == *-* ]] && echo "prerelease=true" >> "$GITHUB_OUTPUT" || echo "prerelease=false" >> "$GITHUB_OUTPUT"
+
+  test:
+    needs: detect
+    if: needs.detect.outputs.version != ''
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+    - name: Run tests
+      run: cargo test --release
+
+  wheels:
+    needs: detect
+    if: needs.detect.outputs.version != ''
+    strategy:
+      matrix:
+        include:
+        - { os: ubuntu-latest, target: x86_64 }
+        - { os: ubuntu-latest, target: aarch64 }
+        - { os: macos-latest, target: aarch64 }
+        - { os: macos-latest, target: x86_64 }
+        - { os: windows-latest, target: x64 }
+    runs-on: ${{ matrix.os }}
+    steps:
+    - uses: actions/checkout@v4
+    - uses: actions/setup-python@v5
+      with:
+        python-version: '3.11'
+    - name: Build wheels
+      uses: PyO3/maturin-action@v1
+      with:
+        target: ${{ matrix.target }}
+        args: --release --out dist --find-interpreter
+        sccache: 'true'
+        manylinux: auto
+    - uses: actions/upload-artifact@v4
+      with:
+        name: wheels-${{ matrix.os }}-${{ matrix.target }}
+        path: dist
+
+  sdist:
+    needs: detect
+    if: needs.detect.outputs.version != ''
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+    - name: Build sdist
+      uses: PyO3/maturin-action@v1
+      with:
+        command: sdist
+        args: --out dist
+    - uses: actions/upload-artifact@v4
+      with:
+        name: wheels-sdist
+        path: dist
+
+  pypi:
+    needs: [detect, test, wheels, sdist]
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/download-artifact@v4
+      with:
+        pattern: wheels-*
+        merge-multiple: true
+        path: dist
+    - name: Publish to PyPI
+      uses: PyO3/maturin-action@v1
+      with:
+        command: upload
+        args: --non-interactive --skip-existing dist/*
+      env:
+        MATURIN_PYPI_TOKEN: ${{ secrets.PYPI_API_TOKEN }}
+
+  crates:
+    needs: [detect, test]
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+    - name: Publish to crates.io
+      env:
+        VERSION: ${{ needs.detect.outputs.version }}
+        CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
+      run: |
+        status=$(curl -s -o /dev/null -w '%{http_code}' -A "rustygraph-release" \
+          "https://crates.io/api/v1/crates/rustygraph/$VERSION")
+        if [ "$status" = "200" ]; then
+          echo "rustygraph $VERSION already on crates.io, skipping."
+        else
+          cargo publish
+        fi
+
+  github-release:
+    needs: [detect, pypi, crates]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+    - uses: actions/download-artifact@v4
+      with:
+        pattern: wheels-*
+        merge-multiple: true
+        path: dist
+    - name: Tag and create GitHub Release
+      uses: softprops/action-gh-release@v2
+      with:
+        tag_name: v${{ needs.detect.outputs.version }}
+        name: v${{ needs.detect.outputs.version }}
+        target_commitish: ${{ github.sha }}
+        prerelease: ${{ needs.detect.outputs.prerelease == 'true' }}
+        generate_release_notes: true
+        files: dist/*

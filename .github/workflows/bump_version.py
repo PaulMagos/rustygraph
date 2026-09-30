@@ -100,11 +100,9 @@ def main():
 
     print("\n📋 Next steps:")
     print(f"  1. Review changes: git diff")
-    print(f"  2. Commit: git commit -am 'Bump version to {new_version}'")
-    print(f"  3. Tag: git tag v{new_version}")
-    print(f"  4. Push: git push origin main && git push origin v{new_version}")
-    print(f"\nThe GitHub Action will automatically publish to PyPI.")
-
+    print(f"  2. Commit: git commit -am 'v{new_version}: <summary>'")
+    print(f"  3. Merge to main (PR title or commit subject starting with v{new_version})")
+    print(f"\nrelease.yml then tests, publishes to PyPI and crates.io, and tags v{new_version}.")
 
 if __name__ == "__main__":
     main()

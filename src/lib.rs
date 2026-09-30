@@ -4,8 +4,8 @@
 //!
 //! ## Features
 //!
-//! - **Natural Visibility Graphs**: O(n) implementation using monotonic stack optimization
-//! - **Horizontal Visibility Graphs**: Fast O(n) average case algorithm
+//! - **Natural Visibility Graphs**: exact divide & conquer, O(n log n) average, parallel for large series
+//! - **Horizontal Visibility Graphs**: O(n) monotone stack
 //! - **Node Feature Computation**: Extensible system for computing node features (basis expansion/data augmentation)
 //! - **Missing Data Handling**: Configurable strategies for imputation
 //! - **Custom Functions**: Support for user-defined features and imputation strategies
@@ -82,8 +82,8 @@
 //!
 //! ## Performance
 //!
-//! - **Natural visibility**: O(n) per node using monotonic stack optimization
-//! - **Horizontal visibility**: O(n) average case
+//! - **Natural visibility**: O(n log n) average / O(n²) worst case (monotone series), see [`algorithms::fast`]
+//! - **Horizontal visibility**: O(n)
 //! - **Memory efficient**: Adjacency list representation for sparse graphs
 //! - **Type generic**: Works with both `f32` and `f64`
 
