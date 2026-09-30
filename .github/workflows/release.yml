@@ -4,12 +4,9 @@ name: Release
 # it came from, starts with a version: "v0.5.1: ...", "0.6.0 - ...", "v1.0.0-rc.1 ...".
 # The version must equal Cargo.toml and pyproject.toml and not be tagged yet.
 # Then: test -> build wheels + sdist -> PyPI + crates.io -> tag vX.Y.Z + GitHub Release.
-# On PRs to main it is a dry run: test and build every wheel, publish nothing.
 
 on:
   push:
-    branches: [ "main" ]
-  pull_request:
     branches: [ "main" ]
   workflow_dispatch:
     inputs:
@@ -19,8 +16,8 @@ on:
         type: string
 
 concurrency:
-  group: release-${{ github.event_name == 'pull_request' && github.ref || 'main' }}
-  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+  group: release
+  cancel-in-progress: false
 
 env:
   CARGO_TERM_COLOR: always
@@ -34,7 +31,6 @@ jobs:
     outputs:
       version: ${{ steps.version.outputs.version }}
       prerelease: ${{ steps.version.outputs.prerelease }}
-      dry_run: ${{ steps.version.outputs.dry_run }}
     steps:
     - uses: actions/checkout@v4
       with:
@@ -48,19 +44,13 @@ jobs:
         SUBJECT: ${{ github.event.head_commit.message }}
         SHA: ${{ github.sha }}
         REPO: ${{ github.repository }}
-        EVENT: ${{ github.event_name }}
       run: |
         set -euo pipefail
         re='^v?([0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.]+)?)([^0-9A-Za-z.]|$)'
         pick() { [[ "$1" =~ $re ]] && echo "${BASH_REMATCH[1]}" || true; }
 
         version=""
-        if [ "$EVENT" = "pull_request" ]; then
-          version=$(grep -m1 '^version = ' Cargo.toml | cut -d'"' -f2)
-          echo "Dry run for $version: build and test only."
-          { echo "version=$version"; echo "prerelease=false"; echo "dry_run=true"; } >> "$GITHUB_OUTPUT"
-          exit 0
-        elif [ -n "${INPUT_VERSION:-}" ]; then
+        if [ -n "${INPUT_VERSION:-}" ]; then
           version=$(pick "$INPUT_VERSION")
           [ -n "$version" ] || { echo "::error::'$INPUT_VERSION' is not a semantic version"; exit 1; }
         else
@@ -89,7 +79,7 @@ jobs:
         fi
 
         echo "Releasing $version"
-        { echo "version=$version"; echo "dry_run=false"; } >> "$GITHUB_OUTPUT"
+        echo "version=$version" >> "$GITHUB_OUTPUT"
         [[ "$version" == *-* ]] && echo "prerelease=true" >> "$GITHUB_OUTPUT" || echo "prerelease=false" >> "$GITHUB_OUTPUT"
 
   test:
@@ -149,7 +139,6 @@ jobs:
 
   pypi:
     needs: [detect, test, wheels, sdist]
-    if: needs.detect.outputs.dry_run == 'false'
     runs-on: ubuntu-latest
     steps:
     - uses: actions/download-artifact@v4
@@ -167,7 +156,6 @@ jobs:
 
   crates:
     needs: [detect, test, wheels, sdist]
-    if: needs.detect.outputs.dry_run == 'false'
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v4
@@ -186,7 +174,6 @@ jobs:
 
   github-release:
     needs: [detect, pypi, crates]
-    if: needs.detect.outputs.dry_run == 'false'
     runs-on: ubuntu-latest
     permissions:
       contents: write

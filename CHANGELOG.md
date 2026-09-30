@@ -16,6 +16,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 - Release workflow publishes to crates.io only after every wheel builds, and
   wheel builds no longer cancel each other on a single failure.
+- CI: `rust.yml` runs on PRs only; `release.yml` runs on pushes to `main` only.
 
 ## [0.5.0] - 2026-09-30 (crates.io only)
 

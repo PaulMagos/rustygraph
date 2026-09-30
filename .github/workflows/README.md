@@ -2,8 +2,8 @@
 
 | Workflow | Trigger | What it does |
 |---|---|---|
-| `rust.yml` | push / PR to `main` | `cargo build` + `cargo test` |
-| `release.yml` | push / PR to `main`, manual | On PRs: dry run (tests + every wheel, no publishing). On `main`: releases when the version prefix rule matches (below) |
+| `rust.yml` | PR to `main` | `cargo build` + `cargo test` |
+| `release.yml` | push to `main`, manual | Releases when the version prefix rule matches (below); runs its own tests first |
 
 ## Releasing
 
