@@ -33,3 +33,10 @@
 PROGRESS.md
 notes.md
 scratch.rs
+
+# Build outputs
+/target/
+__pycache__/
+*.pyc
+*.so
+*.whl
